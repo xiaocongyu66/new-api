@@ -32,18 +32,16 @@ const (
 
 // 默认接口条目：<方言>|<URL>。方言决定 JSON 解析方式，URL 上的查询模板
 // 由管理员直接编辑，{keyword}/{category} 占位符由 substituteQuery 替换。
-// 前四个支持关键词查询（动漫/SFW，Wallhaven 用 categories=010 排除 people），
-// 最后两个是直接返回图片字节的兜底源。
+// 只保留带关键词查询的接口；Booru 模板额外排除人物标签，避免返回动漫人物插画。
+// 全部接口失败时回退到 embed 的 chiikawa / sanrio / pikachu 本地图。
 const (
-	safeBooruAPI = "gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general&limit=5"
-	e926API      = "e926|https://e926.net/posts.json?tags={keyword}&limit=5"
-	tbibAPI      = "gelbooru|https://tbib.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general&limit=5"
+	safeBooruAPI = "gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5"
+	e926API      = "e926|https://e926.net/posts.json?tags={keyword}+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5"
+	tbibAPI      = "gelbooru|https://tbib.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5"
 	wallhavenAPI = "wallhaven|https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&purity=100&sorting=random"
-	alcyAPI      = "direct|https://t.alcy.cc/ycy/"
-	xjhAPI       = "direct|https://img.xjh.me/random_img.php?type=json&return=302"
 )
 
-var defaultWallpaperAPIs = []string{safeBooruAPI, e926API, tbibAPI, wallhavenAPI, alcyAPI, xjhAPI}
+var defaultWallpaperAPIs = []string{safeBooruAPI, e926API, tbibAPI, wallhavenAPI}
 var (
 	wallpaperMu            sync.RWMutex
 	wallpaperRefreshMu     sync.Mutex

@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -168,4 +169,15 @@ func TestWallpaperSourceCooldown(t *testing.T) {
 	assert.False(t, wallpaperSourceAvailable(entry))
 	wallpaperSourceResult(entry, true)
 	assert.True(t, wallpaperSourceAvailable(entry))
+}
+
+func TestDefaultWallpaperSourcesExcludeHumanCharacters(t *testing.T) {
+	for _, entry := range defaultWallpaperAPIs {
+		assert.False(t, strings.HasPrefix(entry, "direct|"),
+			"unfiltered direct sources return anime character art: %s", entry)
+		if strings.HasPrefix(entry, "gelbooru|") || strings.HasPrefix(entry, "e926|") {
+			assert.Contains(t, entry, "-1girl", "booru source must exclude human characters: %s", entry)
+			assert.Contains(t, entry, "-1boy", "booru source must exclude human characters: %s", entry)
+		}
+	}
 }

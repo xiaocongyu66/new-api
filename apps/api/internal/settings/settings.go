@@ -234,13 +234,11 @@ func SeedOptionMap() {
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
 	common.OptionMap["SMTPAccountPool"] = ""
 	common.OptionMap["Notice"] = ""
-	common.OptionMap["wallpaper.image_url"] = `gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general&limit=5
-e926|https://e926.net/posts.json?tags={keyword}&limit=5
-gelbooru|https://tbib.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general&limit=5
-wallhaven|https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&purity=100&sorting=random
-direct|https://t.alcy.cc/ycy/
-direct|https://img.xjh.me/random_img.php?type=json&return=302`
-	common.OptionMap["wallpaper.api_url"] = "gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general&limit=5"
+	common.OptionMap["wallpaper.image_url"] = `gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5
+e926|https://e926.net/posts.json?tags={keyword}+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5
+gelbooru|https://tbib.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5
+wallhaven|https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&purity=100&sorting=random`
+	common.OptionMap["wallpaper.api_url"] = "gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general+-1girl+-1boy+-multiple_girls+-multiple_boys+-human+-cosplay+-person&limit=5"
 	common.OptionMap["wallpaper.keywords"] = "chiikawa, cinnamoroll, kuromi, my melody, pompompurin, pochacco, keroppi, tuxedosam, chococat, pikachu, eevee, rilakkuma"
 	common.OptionMap["wallpaper.category"] = "anime"
 	common.OptionMap["wallpaper.refresh_interval"] = "60"
