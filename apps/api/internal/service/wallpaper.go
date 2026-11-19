@@ -22,16 +22,6 @@ import (
 )
 
 const (
-	// wallhavenPicAPI 是 Wallhaven 兼容的关键词搜索接口。默认用 clbug 镜像
-	// （官方 wallhaven.cc 在本机不可达）。请求始终带 categories/purity/sorting
-	// 参数：categories=010 只取动漫分类，天然排除 people（人物）分类。
-	wallhavenPicAPI = "https://hub.saintic.com/openservice/wallhavenpic"
-	// wallhavenSearchAPI 是用户提供的 wallhaven 镜像关键词搜索接口（官方在本机不可达）。
-	// 查询模板直接写在 URL 上：占位符由 fetchWallpaperFileURL 替换。
-	// categories=010 只取动漫，排除 people（真人/人物）分类；purity=100 仅 SFW。
-	wallhavenSearchAPI = "https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&purity=100&sorting=random"
-	// defaultWallpaperAPIs 是五个默认接口（三个 direct 图片源 + 两个关键词搜索源），按顺序回退。
-
 	wallpaperDefaultRefreshMinutes = 60
 	wallpaperMinRefreshMinutes     = 1
 	wallpaperMaxRefreshMinutes     = 1440
@@ -40,16 +30,20 @@ const (
 	wallpaperImageTimeout          = 30 * time.Second
 )
 
-// 直接返回图片的动漫接口（302 到 CDN 的静态图，无需 JSON 解析）。
-// 用 "direct:" 前缀标记；实测 loliapi（EdgeOne CDN，0.9s）与栗次元（0.4s）均稳定可达。
+// 默认接口条目：<方言>|<URL>。方言决定 JSON 解析方式，URL 上的查询模板
+// 由管理员直接编辑，{keyword}/{category} 占位符由 substituteQuery 替换。
+// 前四个支持关键词查询（动漫/SFW，Wallhaven 用 categories=010 排除 people），
+// 最后两个是直接返回图片字节的兜底源。
 const (
-	loliapiDirect = "direct:https://www.loliapi.com/acg/pc/"
-	alcyDirect    = "direct:https://t.alcy.cc/ycy/"
-	xjhDirect     = "direct:https://img.xjh.me/random_img.php?type=json&return=302"
+	safeBooruAPI = "gelbooru|https://safebooru.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general&limit=5"
+	e926API      = "e926|https://e926.net/posts.json?tags={keyword}&limit=5"
+	tbibAPI      = "gelbooru|https://tbib.org/index.php?page=dapi&s=post&q=index&json=1&tags={keyword}+rating:general&limit=5"
+	wallhavenAPI = "wallhaven|https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&purity=100&sorting=random"
+	alcyAPI      = "direct|https://t.alcy.cc/ycy/"
+	xjhAPI       = "direct|https://img.xjh.me/random_img.php?type=json&return=302"
 )
 
-// 默认接口顺序：先走快的直接图片源，再走关键词搜索接口。
-var defaultWallpaperAPIs = []string{loliapiDirect, alcyDirect, xjhDirect, wallhavenSearchAPI, wallhavenPicAPI}
+var defaultWallpaperAPIs = []string{safeBooruAPI, e926API, tbibAPI, wallhavenAPI, alcyAPI, xjhAPI}
 var (
 	wallpaperMu            sync.RWMutex
 	wallpaperRefreshMu     sync.Mutex
@@ -203,43 +197,18 @@ func (e *errNoWallpaperForKeyword) Error() string {
 }
 
 // fetchWallpaperFileURL 用关键词查询指定的壁纸接口，取回图片直链。
+// 保留为独立入口供测试与旧配置使用；方言细节由 wallpaperSource 处理。
 func fetchWallpaperFileURL(keyword string, apiEntry string) (string, error) {
-	apiURL, queryTemplate := splitAPIEntry(apiEntry)
-	parsed, err := url.Parse(apiURL)
+	source := parseWallpaperSource(apiEntry)
+	queryURL, err := source.queryURL(keyword)
 	if err != nil {
 		return "", err
 	}
-	if queryTemplate != "" {
-		// UI 配置的查询模板：完全按用户写的发，占位符替换。
-		parsed.RawQuery = substituteQuery(queryTemplate, keyword)
-	} else {
-		// 兼容旧配置（未带模板）：沿用默认参数。
-		query := parsed.Query()
-		query.Set("q", keyword)
-		query.Set("categories", "010")
-		query.Set("purity", "100")
-		query.Set("sorting", "random")
-		query.Set("category", wallpaperOption("wallpaper.category", "anime"))
-		query.Set("json", "")
-		parsed.RawQuery = query.Encode()
-	}
-
-	body, _, err := fetchWithTimeout(parsed.String(), "application/json", wallpaperAPIClientTimeout)
+	body, _, err := fetchWithTimeout(queryURL, "application/json", wallpaperAPIClientTimeout)
 	if err != nil {
 		return "", err
 	}
-	var result wallpaperAPIResponse
-	if err := common.Unmarshal(body, &result); err != nil {
-		return "", err
-	}
-	fileURL := result.pickFileURL()
-	if fileURL == "" {
-		return "", &errNoWallpaperForKeyword{keyword: keyword}
-	}
-	if err := validateWallpaperFileURL(fileURL); err != nil {
-		return "", err
-	}
-	return fileURL, nil
+	return source.extractFileURL(body, keyword)
 }
 
 // wallpaperAPIURLs 解析管理员配置的壁纸「查询接口」列表。
@@ -295,11 +264,10 @@ func looksLikeImage(data []byte, contentType string) bool {
 	return strings.HasPrefix(strings.ToLower(contentType), "image/")
 }
 
-// fetchWallpaperFromUpstream 遍历管理员配置的壁纸查询接口列表，
-// 每个接口用随机关键词查询（失败换关键词，再换下一个接口），
-// 第一个返回真实图片的结果生效。全部失败才返回最后一个错误。
+// fetchWallpaperFromUpstream 遍历管理员配置的壁纸接口列表，
+// 每个接口用随机关键词查询（无结果换词，接口故障换源），
+// 第一个返回真实图片的生效；连续失败的源进入短期冷却。
 func fetchWallpaperFromUpstream() ([]byte, string, error) {
-	// 总 deadline：全部接口不可达时最多阻塞 60s，然后回退本地 LRU/内置图。
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	var lastErr error
@@ -312,27 +280,31 @@ func fetchWallpaperFromUpstream() ([]byte, string, error) {
 		if ctx.Err() != nil {
 			return nil, "", ctx.Err()
 		}
-		// direct: 前缀的接口直接返回图片（302 到 CDN），无需关键词查询与 JSON 解析。
-		if strings.HasPrefix(apiEntry, "direct:") {
-			directURL := strings.TrimPrefix(apiEntry, "direct:")
-			if err := validateWallpaperFileURL(directURL); err != nil {
-				lastErr = err
-				logger.LogInfo(context.Background(), "wallpaper direct API rejected: "+directURL+": "+err.Error())
-				continue
-			}
-			data, contentType, err := fetchWithTimeout(directURL, "image/*", wallpaperImageTimeout)
-			if err == nil && looksLikeImage(data, contentType) {
-				return data, contentType, nil
-			}
-			if err == nil {
-				err = fmt.Errorf("direct API returned non-image (content-type %q)", contentType)
-			}
-			lastErr = err
-			logger.LogInfo(context.Background(), "wallpaper direct API skipped: "+directURL+": "+err.Error())
+		source := parseWallpaperSource(apiEntry)
+		if !wallpaperSourceAvailable(source.entry) {
 			continue
 		}
+		if source.kind == wallpaperSourceDirect {
+			if err := validateWallpaperFileURL(source.baseURL); err != nil {
+				lastErr = err
+				wallpaperSourceResult(source.entry, false)
+				logger.LogInfo(context.Background(), "wallpaper direct API rejected: "+source.baseURL+": "+err.Error())
+				continue
+			}
+			data, contentType, err := fetchWithTimeout(source.baseURL, "image/*", wallpaperImageTimeout)
+			if err == nil && !looksLikeImage(data, contentType) {
+				err = fmt.Errorf("direct API returned non-image (content-type %q)", contentType)
+			}
+			if err != nil {
+				lastErr = err
+				wallpaperSourceResult(source.entry, false)
+				logger.LogInfo(context.Background(), "wallpaper direct API skipped: "+source.baseURL+": "+err.Error())
+				continue
+			}
+			wallpaperSourceResult(source.entry, true)
+			return data, contentType, nil
+		}
 
-		apiURL, _ := splitAPIEntry(apiEntry)
 		urlFailed := false
 		for range 3 {
 			if ctx.Err() != nil {
@@ -344,12 +316,10 @@ func fetchWallpaperFromUpstream() ([]byte, string, error) {
 				lastErr = err
 				var noResult *errNoWallpaperForKeyword
 				if errors.As(err, &noResult) {
-					// 接口可达但关键词无结果：换关键词重试。
 					continue
 				}
-				// 接口本身不可达/超时：换关键词无意义，跳到下一个接口。
 				logger.LogInfo(context.Background(),
-					"wallpaper API unreachable, skipping keyword retries: "+apiURL+": "+err.Error())
+					"wallpaper API unreachable, skipping keyword retries: "+source.baseURL+": "+err.Error())
 				urlFailed = true
 				break
 			}
@@ -359,14 +329,15 @@ func fetchWallpaperFromUpstream() ([]byte, string, error) {
 					err = fmt.Errorf("query returned no image bytes")
 				}
 				lastErr = err
-				// 拿到了图片地址但下载失败/非图片：这个关键词不行，换下一个关键词。
 				continue
 			}
+			wallpaperSourceResult(source.entry, true)
 			return data, contentType, nil
 		}
+		wallpaperSourceResult(source.entry, false)
 		if !urlFailed {
 			logger.LogInfo(context.Background(),
-				"wallpaper API skipped after keyword retries: "+apiURL)
+				"wallpaper API skipped after keyword retries: "+source.baseURL)
 		}
 	}
 	return nil, "", lastErr
