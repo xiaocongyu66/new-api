@@ -397,6 +397,7 @@ func SetApiRouter(router contract.Engine) {
 		{
 			redemptionRoute.GET("/", billing.GetAllRedemptions)
 			redemptionRoute.GET("/search", billing.SearchRedemptions)
+			redemptionRoute.GET("/names", billing.GetRedemptionNames)
 			redemptionRoute.GET("/:id", billing.GetRedemption)
 			redemptionRoute.POST("/", billing.AddRedemption)
 			redemptionRoute.PUT("/", billing.UpdateRedemption)

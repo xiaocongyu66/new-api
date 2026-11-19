@@ -37,6 +37,11 @@ const STATUS_RELATED_KEYS = new Set([
   'general_setting.quota_display_type',
   'general_setting.custom_currency_symbol',
   'general_setting.custom_currency_exchange_rate',
+  'invite_reward.inviter_mode',
+  'invite_reward.rebate_multiplier',
+  'invite_reward.rebate_trigger',
+  'invite_reward.transfer_min_quota',
+  'invite_reward.transfer_min_quota_display',
   'general_setting.amount_name',
   'general_setting.amount_unit',
 ])
