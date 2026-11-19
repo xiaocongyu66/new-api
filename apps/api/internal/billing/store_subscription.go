@@ -336,6 +336,20 @@ func subscriptionAllowsGroup(sub *UserSubscription, usingGroup string) bool {
 	return false
 }
 
+// subscriptionCoversGroup reports whether a subscription may serve a request
+// in usingGroup. A shared pool (scope=all) is one pool for every group, so its
+// group snapshot must not gate spending; only scoped entitlement rows do.
+// Legacy rows predate the scope column and resolve to a shared pool.
+func subscriptionCoversGroup(sub *UserSubscription, usingGroup string) bool {
+	if sub == nil {
+		return false
+	}
+	if scope, _ := subscriptionLimitAxes(sub); scope == SubscriptionScopeAll {
+		return true
+	}
+	return subscriptionAllowsGroup(sub, usingGroup)
+}
+
 // Subscription plan
 type SubscriptionPlan struct {
 	Id int `json:"id"`
@@ -438,6 +452,15 @@ func (plan *SubscriptionPlan) AfterFind(_ *gorm.DB) error {
 	}
 	if rules, err := parseRequestRulesJSON(plan.RequestRulesJSON); err == nil {
 		plan.RequestRules = rules
+	}
+	// Older quota rules stored only the internal amount. Fill the display
+	// value on read so the admin table, purchase dialog and wallet card never
+	// render a group quota as zero.
+	for i := range plan.RequestRules {
+		rule := &plan.RequestRules[i]
+		if rule.Amount > 0 && rule.AmountDisplay == 0 {
+			rule.AmountDisplay = QuotaToDisplayAmount64(rule.Amount)
+		}
 	}
 	// The two admin-form axes are derived on read so legacy rows answer the
 	// same shape as plans saved through the new form.
@@ -1221,7 +1244,7 @@ func UserActiveSubscriptionsAllowWalletOverflow(userId int, usingGroup string) (
 		return false, err
 	}
 	for i := range subs {
-		if subscriptionAllowsGroup(&subs[i], usingGroup) {
+		if subscriptionCoversGroup(&subs[i], usingGroup) {
 			return false, nil
 		}
 	}
@@ -1247,7 +1270,7 @@ func HasUsableUserSubscription(userId int, usingGroup string, modelName string, 
 	requestSubIds := make([]int, 0, len(subs))
 	scopedKeys := make(map[int][2]string, len(subs))
 	for i := range subs {
-		if !subscriptionAllowsGroup(&subs[i], usingGroup) {
+		if !subscriptionCoversGroup(&subs[i], usingGroup) {
 			continue
 		}
 		scope, measure := subscriptionLimitAxes(&subs[i])
@@ -1440,6 +1463,11 @@ type SubscriptionPreConsumeResult struct {
 	// RequestKind marks that this pre-consume served a request-kind
 	// subscription and reserved one request counter entry.
 	RequestKind bool
+	// CounterTotal / CounterUsedAfter carry the quota-measured entitlement
+	// row's budget so RelayInfo logs show the real remaining balance instead
+	// of the zeroed shared-pool columns.
+	CounterTotal     int64
+	CounterUsedAfter int64
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1533,10 +1561,14 @@ func subscriptionReachedEndTx(tx *gorm.DB, sub *UserSubscription, now int64) (bo
 	if sub.EndTime > 0 && sub.EndTime <= now {
 		return true, nil
 	}
-	// Scoped subscriptions (per-group or per-model entitlements) end when every
-	// entitlement row is spent, whatever the stored kind says.
-	if scope, _ := subscriptionLimitAxes(sub); scope != SubscriptionScopeAll {
-		return requestSubscriptionExhaustedTx(tx, sub.Id)
+	// Count-measured entitlements and quota-expiry plans end when their rows
+	// are spent. A time-expiry quota plan only ends at end_time: the row is a
+	// spending cap, not an expiry trigger.
+	if scope, measure := subscriptionLimitAxes(sub); scope != SubscriptionScopeAll {
+		if measure == SubscriptionMeasureCount || normalizeSubscriptionKind(sub.Kind) == SubscriptionKindQuota {
+			return requestSubscriptionExhaustedTx(tx, sub.Id)
+		}
+		return false, nil
 	}
 	switch normalizeSubscriptionKind(sub.Kind) {
 	case SubscriptionKindQuota:
@@ -1555,6 +1587,11 @@ func requestSubscriptionExhaustedTx(tx *gorm.DB, userSubscriptionId int) (bool, 
 		return false, nil
 	}
 	for _, counter := range counters {
+		// A quota row with total=0 is an unbounded pool (the shared-pool
+		// "0 means unlimited" convention carried over); it never exhausts.
+		if counter.Measure == SubscriptionMeasureQuota && counter.Total == 0 {
+			return false, nil
+		}
 		if counter.Used < counter.Total {
 			return false, nil
 		}
@@ -1564,8 +1601,8 @@ func requestSubscriptionExhaustedTx(tx *gorm.DB, userSubscriptionId int) (bool, 
 
 func findExhaustedRequestSubscriptions(limit int) ([]UserSubscription, error) {
 	var subs []UserSubscription
-	if err := dbx.DB.Where("status = ? AND (kind = ? OR scope IN ?)",
-		"active", SubscriptionKindRequest, []string{SubscriptionScopeGroup, SubscriptionScopeModel}).
+	if err := dbx.DB.Where("status = ? AND (kind = ? OR (scope IN ? AND kind = ?))",
+		"active", SubscriptionKindRequest, []string{SubscriptionScopeGroup, SubscriptionScopeModel}, SubscriptionKindQuota).
 		Order("id asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {
@@ -1717,6 +1754,10 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 					usedBefore := replayCounter.Used
 					if replayCounter.Measure == SubscriptionMeasureQuota {
 						usedBefore -= existing.PreConsumed
+						returnValue.AmountTotal = replayCounter.Total
+						returnValue.AmountUsedAfter = replayCounter.Used
+						returnValue.CounterTotal = replayCounter.Total
+						returnValue.CounterUsedAfter = replayCounter.Used
 					} else if usedBefore > 0 {
 						usedBefore--
 					}
@@ -1741,7 +1782,7 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 		}
 		candidates := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
-			if !subscriptionAllowsGroup(&candidate, usingGroup) {
+			if !subscriptionCoversGroup(&candidate, usingGroup) {
 				continue
 			}
 			if candidate.AmountTotal > 0 && candidate.AmountUsed >= candidate.AmountTotal {
@@ -1778,6 +1819,8 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			requestCounterUsedBefore := int64(0)
 			var requestCounterId int
 			scoped := false
+			quotaScoped := false
+			var quotaCounterTotal, quotaCounterUsedAfter int64
 			scope, measure := subscriptionLimitAxes(&sub)
 			if scope != SubscriptionScopeAll {
 				scoped = true
@@ -1798,6 +1841,9 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 						continue
 					}
 					counter.Used += amount
+					quotaScoped = true
+					quotaCounterTotal = counter.Total
+					quotaCounterUsedAfter = counter.Used
 				} else {
 					if counter.Used >= counter.Total {
 						continue
@@ -1835,6 +1881,12 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 						var replayCounter SubscriptionRequestCounter
 						if err := tx.Where("id = ?", dup.RequestCounterId).First(&replayCounter).Error; err == nil {
 							returnValue.RequestKind = replayCounter.Measure == SubscriptionMeasureCount
+							if replayCounter.Measure == SubscriptionMeasureQuota {
+								returnValue.AmountTotal = replayCounter.Total
+								returnValue.AmountUsedAfter = replayCounter.Used
+								returnValue.CounterTotal = replayCounter.Total
+								returnValue.CounterUsedAfter = replayCounter.Used
+							}
 						}
 					}
 					return nil
@@ -1847,9 +1899,17 @@ func PreConsumeUserSubscription(requestId string, userId int, usingGroup string,
 			}
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = amount
-			returnValue.AmountTotal = sub.AmountTotal
-			returnValue.AmountUsedBefore = usedBefore
-			returnValue.AmountUsedAfter = sub.AmountUsed
+			if quotaScoped {
+				returnValue.AmountTotal = quotaCounterTotal
+				returnValue.AmountUsedBefore = requestCounterUsedBefore
+				returnValue.AmountUsedAfter = quotaCounterUsedAfter
+				returnValue.CounterTotal = quotaCounterTotal
+				returnValue.CounterUsedAfter = quotaCounterUsedAfter
+			} else {
+				returnValue.AmountTotal = sub.AmountTotal
+				returnValue.AmountUsedBefore = usedBefore
+				returnValue.AmountUsedAfter = sub.AmountUsed
+			}
 			returnValue.RequestCounterUsedBefore = requestCounterUsedBefore
 			returnValue.RequestCounterId = requestCounterId
 			returnValue.RequestKind = scoped && measure == SubscriptionMeasureCount

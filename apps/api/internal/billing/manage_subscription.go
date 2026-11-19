@@ -236,6 +236,7 @@ func applyPlanRequestRules(plan *SubscriptionPlan) error {
 				return errors.New("限制额度必须大于0")
 			}
 			normalizedRule.Amount = amount
+			normalizedRule.AmountDisplay = QuotaToDisplayAmount64(amount)
 		} else {
 			if rule.Count <= 0 {
 				return errors.New("请求规则次数必须大于0")

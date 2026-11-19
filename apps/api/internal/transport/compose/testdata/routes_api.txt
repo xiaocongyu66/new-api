@@ -228,6 +228,7 @@ POST /api/stripe/webhook
 POST /api/subscription/admin/bind
 POST /api/subscription/admin/plans
 POST /api/subscription/admin/plans/:id/subscriptions/reset
+POST /api/subscription/admin/quota-compensate
 POST /api/subscription/admin/user_subscriptions/:id/invalidate
 POST /api/subscription/admin/users/:id/subscriptions
 POST /api/subscription/admin/users/:id/subscriptions/reset

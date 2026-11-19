@@ -23,6 +23,8 @@ import type React from 'react'
 
 import { resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
+// happy-dom is installed per test, so the React/UI modules are imported after
+// resetSharedDomWindow instead of at module load time.
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { createInstance } = await import('i18next')
@@ -103,6 +105,36 @@ describe('RequestCountBars', () => {
     )
     const text = container.textContent || ''
     assert.ok(text.includes('0/0'), `missing zero-total counter, got: ${text}`)
+    assert.ok(!text.includes('NaN'), `NaN leaked into the UI: ${text}`)
+  })
+
+  test('formats quota rows and treats a zero total as unlimited', async () => {
+    const { RequestCountBars } = await import('../request-count-bars')
+    const container = await renderWithI18n(
+      <RequestCountBars
+        counters={[
+          {
+            id: 4,
+            group_name: 'vip',
+            model_name: '',
+            measure: 'quota',
+            total: 1000000,
+            used: 250000,
+          },
+          {
+            id: 5,
+            group_name: 'default',
+            model_name: '',
+            measure: 'quota',
+            total: 0,
+            used: 0,
+          },
+        ]}
+      />
+    )
+    const text = container.textContent || ''
+    assert.ok(text.includes('vip'), `missing group label, got: ${text}`)
+    assert.ok(text.includes('Unlimited'), `missing unlimited row, got: ${text}`)
     assert.ok(!text.includes('NaN'), `NaN leaked into the UI: ${text}`)
   })
 })

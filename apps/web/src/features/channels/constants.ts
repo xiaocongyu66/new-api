@@ -180,14 +180,6 @@ export const MULTI_KEY_STATUS_CONFIG = {
 // Multi-Key Modes
 // ============================================================================
 
-export const ADD_MODE_OPTIONS = [
-  { value: 'single', label: 'Single Key' },
-  { value: 'batch', label: 'Batch Add (one key per line)' },
-  {
-    value: 'multi_to_single',
-    label: 'Multi-Key Mode (multiple keys, one channel)',
-  },
-] as const
 
 // ============================================================================
 // Multi-Key Management
@@ -316,13 +308,8 @@ export const FIELD_PLACEHOLDERS = {
 export const FIELD_DESCRIPTIONS = {
   NAME: 'Friendly name to identify this channel',
   TYPE: 'Provider type (OpenAI, Anthropic, etc.)',
-  BASE_URL: 'Custom API base URL. Leave empty to use provider default.',
   KEY: 'API key from the provider',
-  MODELS:
-    'List of models supported by this channel. Use comma to separate multiple models.',
   GROUP: 'User groups that can access this channel. ',
-  MODEL_MAPPING:
-    'Map request model names to actual provider model names (JSON format)',
   TEST_MODEL: 'Model to use when testing channel connectivity',
   AUTO_BAN: 'Automatically disable channel on repeated failures',
   STATUS_CODE_MAPPING: 'Map response status codes (JSON format)',
@@ -333,7 +320,6 @@ export const FIELD_DESCRIPTIONS = {
   HEADER_OVERRIDE: 'Override request headers (JSON format)',
   MULTI_KEY_MODE: 'How to select keys: random or sequential polling',
   BATCH_ADD: 'Create multiple channels from multiple keys',
-  OPENAI_ORG: 'OpenAI Organization ID (optional)',
 } as const
 
 // ============================================================================

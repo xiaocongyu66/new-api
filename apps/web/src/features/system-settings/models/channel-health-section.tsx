@@ -236,7 +236,6 @@ export function ChannelHealthSection() {
   )
 
   const editDraft = (patch: Partial<ProbeSettings>) => {
-    draftDirtyRef.current = true
     setDraft((prev) => (prev === null ? prev : { ...prev, ...patch }))
   }
 
@@ -370,7 +369,6 @@ export function ChannelHealthSection() {
         throw new Error(res.message || t('Failed to save probe settings'))
       }
       toast.success(t('Probe settings saved'))
-      draftDirtyRef.current = false
       setReloadToken((token) => token + 1)
     } catch (error: unknown) {
       toast.error(

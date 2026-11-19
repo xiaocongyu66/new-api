@@ -53,7 +53,11 @@ import {
   formatResetPeriod,
   getPlanUpgradeGroups,
 } from '../../lib'
-import { planExpireMode, planMeasure, planScope } from '../../constants'
+import {
+  planExpireMode,
+  planGrantMode,
+  planMeasure,
+} from '../../constants'
 import type { PlanRecord } from '../../types'
 
 interface Props {
@@ -337,34 +341,32 @@ export function SubscriptionPurchaseDialog(props: Props) {
               )}
             </>
           )}
-          {planScope(plan) === 'all' && (
+          {planGrantMode(plan) === 'total' && (
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-sm'>
-                {planMeasure(plan) === 'count'
-                  ? t('Request Limits')
-                  : t('Plan Quota')}
+                {t('Plan Quota')}
               </span>
               <span className='flex items-center gap-1 text-sm'>
                 <Package className='h-3.5 w-3.5' />
-                {planMeasure(plan) === 'count'
-                  ? (plan.request_rules || []).length
-                  : totalAmount > 0
-                    ? formatQuota(totalAmount)
-                    : t('Unlimited')}
+                {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
               </span>
             </div>
           )}
-          {planScope(plan) !== 'all' &&
+          {planGrantMode(plan) !== 'total' &&
             (plan.request_rules || []).map((rule) => (
               <div
                 key={`${rule.group}-${rule.models.join(',')}`}
                 className='flex items-start justify-between gap-3'
               >
                 <span className='text-muted-foreground text-sm'>
-                  {t('Request Limits')}
+                  {planMeasure(plan) === 'quota'
+                    ? t('Group Limits')
+                    : t('Request Limits')}
                 </span>
                 <span className='text-right text-sm'>
-                  {rule.group} · {rule.models.join(', ')} × {rule.count}
+                  {planMeasure(plan) === 'quota'
+                    ? `${rule.group} · ${formatQuota(Number(rule.amount_display || 0))}`
+                    : `${rule.group} · ${rule.models.join(', ')} × ${rule.count}`}
                 </span>
               </div>
             ))}

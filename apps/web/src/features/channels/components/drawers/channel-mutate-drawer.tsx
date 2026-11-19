@@ -20,6 +20,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
+  ArrowUp,
   Boxes,
   ClipboardPaste,
   HelpCircle,
@@ -29,6 +30,7 @@ import {
   Sparkles,
   Trash2,
   Copy,
+  ChevronDown,
   FileText,
   Eraser,
   Plus,
@@ -49,6 +51,7 @@ import {
   useRef,
 } from 'react'
 import { createPortal } from 'react-dom'
+
 
 import { type SubmitErrorHandler, useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -136,7 +139,6 @@ import {
   refreshCodexCredential,
 } from '../../api'
 import {
-  ADD_MODE_OPTIONS,
   CHANNEL_STATUS_LABELS,
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_WARNINGS,
@@ -160,7 +162,6 @@ import {
   type ChannelFormValues,
   deduplicateKeys,
   getChannelTypeIcon,
-  getKeyPromptForType,
   parseModelsString,
   formatModelsArray,
   extractRedirectModels,
@@ -187,7 +188,6 @@ import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
 import { ModelMappingEditor } from '../model-mapping-editor'
 import {
   ChannelApiAccessSection,
-  ChannelAuthSection,
   ChannelBasicSection,
   ChannelEditorLoadingState,
   ChannelModelsSection,
@@ -235,6 +235,65 @@ const createEmptyModelMappingGuardrail = (): ModelMappingGuardrail => ({
 
 const formatModelNames = (models: string[]): string =>
   models.map((model) => `"${model}"`).join(', ')
+
+type QuickCreateParseResult = {
+  baseUrl: string | null
+  apiKey: string | null
+}
+
+const QUICK_CREATE_KEY_PATTERNS = [
+  /sk-[a-zA-Z0-9_-]{16,}/g,
+  /AIza[a-zA-Z0-9_-]{30,}/g,
+  /gsk_[a-zA-Z0-9_-]{16,}/g,
+  /xai-[a-zA-Z0-9_-]{16,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /hf_[a-zA-Z0-9]{16,}/g,
+]
+const QUICK_CREATE_LABELED_KEY_PATTERN =
+  /(?:api[\s_-]*key|密钥|\bkey\b)\s*[:=]\s*["'`]?([^\s"'`]+)/i
+const QUICK_CREATE_BARE_KEY_PATTERN = /^[a-zA-Z0-9_-]{20,}$/
+const QUICK_CREATE_URL_PATTERN =
+  /(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s"'<>()\[\]“”，、；]*)?/gi
+const QUICK_CREATE_TRAILING_PUNCTUATION = /[.,;:)\]}"'，。；、]+$/
+
+
+function parseQuickCreateText(text: string): QuickCreateParseResult {
+  const keyCandidates: string[] = []
+  const urlCandidates: string[] = []
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    const withoutUrls = trimmed.replace(QUICK_CREATE_URL_PATTERN, '')
+
+    for (const pattern of QUICK_CREATE_KEY_PATTERNS) {
+      keyCandidates.push(...(withoutUrls.match(pattern) ?? []))
+    }
+    const labeledKey = QUICK_CREATE_LABELED_KEY_PATTERN.exec(withoutUrls)
+    if (labeledKey?.[1]) {
+      keyCandidates.push(labeledKey[1])
+    } else if (QUICK_CREATE_BARE_KEY_PATTERN.test(withoutUrls)) {
+      keyCandidates.push(withoutUrls)
+    }
+
+    for (const rawUrl of trimmed.match(QUICK_CREATE_URL_PATTERN) ?? []) {
+      const url = rawUrl
+        .replace(/[?#].*$/, '')
+        .replace(QUICK_CREATE_TRAILING_PUNCTUATION, '')
+      if (url) urlCandidates.push(url)
+    }
+  }
+
+  const apiKey =
+    Array.from(
+      new Set(
+        keyCandidates.map((key) =>
+          key.replace(QUICK_CREATE_TRAILING_PUNCTUATION, '')
+        )
+      )
+    ).join('\n') || null
+
+  return { baseUrl: urlCandidates.at(-1) ?? null, apiKey }
+}
 
 const MODEL_MAPPING_PREVIEW_FALLBACK: Array<{
   source: string
@@ -381,7 +440,7 @@ function configuredAdvancedSectionClassName(
   className: string,
   configured: boolean
 ) {
-  return cn(className, configured && 'ring-primary/20 ring-1')
+  return cn(className, configured && 'ring-primary/20 ring-1 rounded-lg')
 }
 
 function ChannelTypeLogo(props: {
@@ -514,6 +573,79 @@ function ChannelEditorNav(props: {
   )
 }
 
+function ChannelMobileSectionNav(props: {
+  items: ChannelEditorNavItem[]
+  activeItemId?: string
+  onNavigate: (targetId: string) => void
+  navigationLabel: string
+}) {
+  const [open, setOpen] = useState(false)
+  const activeItem = props.items.find((item) => item.id === props.activeItemId)
+
+  return createPortal(
+    <div className='fixed right-14 bottom-4 z-[60] lg:hidden'>
+      <div className='relative'>
+        <button
+          type='button'
+          className='bg-background/95 border-border/60 flex items-center gap-1 rounded-full border px-2 py-1 text-left shadow-sm backdrop-blur'
+          aria-expanded={open}
+          aria-label={props.navigationLabel}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span className='max-w-[7rem] truncate text-[11px] font-medium'>
+            {activeItem?.title ?? props.navigationLabel}
+          </span>
+          <ChevronDown
+            className={cn(
+              'text-muted-foreground size-3 shrink-0 transition-transform',
+              open && 'rotate-180'
+            )}
+            aria-hidden='true'
+          />
+        </button>
+        {open && (
+          <>
+            <button
+              type='button'
+              className='fixed inset-0 z-0 cursor-default'
+              aria-label={props.navigationLabel}
+              onClick={() => setOpen(false)}
+            />
+            <nav
+              className='border-border/60 bg-background absolute bottom-full right-0 z-10 mb-1 max-h-72 w-56 overflow-y-auto rounded-lg border p-1 shadow-lg'
+              aria-label={props.navigationLabel}
+            >
+              {props.items.map((item) => {
+                const isActive = props.activeItemId === item.id
+                return (
+                  <button
+                    key={item.id}
+                    type='button'
+                    className={cn(
+                      'hover:bg-muted/60 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs',
+                      isActive && 'bg-primary/10 font-medium text-primary'
+                    )}
+                    aria-current={isActive ? 'true' : undefined}
+                    onClick={() => {
+                      props.onNavigate(item.id)
+                      setOpen(false)
+                    }}
+                  >
+                    <span className='min-w-0 flex-1 truncate'>
+                      {item.title}
+                    </span>
+                  </button>
+                )
+              })}
+            </nav>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export function ChannelMutateDrawer(props: ChannelMutateDrawerProps) {
   return <ChannelMutateDrawerContent {...props} />
 }
@@ -540,6 +672,12 @@ function ChannelMutateDrawerContent({
   )
   const canRevealChannelKey = currentUser?.role === ROLE.SUPER_ADMIN
   const [fetchModelsDialogOpen, setFetchModelsDialogOpen] = useState(false)
+  const [quickCreateText, setQuickCreateText] = useState('')
+  const quickCreateFilledRef = useRef({ baseUrl: '', apiKey: '' })
+  const [showBackToTop, setShowBackToTop] = useState(false)
+  useEffect(() => {
+    if (!isPresented) setShowBackToTop(false)
+  }, [isPresented, currentRow?.id])
   const [channelKey, setChannelKey] = useState<string | null>(null)
   const [isChannelKeyLoading, setIsChannelKeyLoading] = useState(false)
   const [isCodexCredentialRefreshing, setIsCodexCredentialRefreshing] =
@@ -641,6 +779,7 @@ function ChannelMutateDrawerContent({
 
   const resetEditorState = useCallback(() => {
     form.reset(CHANNEL_FORM_DEFAULT_VALUES)
+    setQuickCreateText('')
     setActiveEditorSectionId(CHANNEL_EDITOR_SECTION_IDS.identity)
     editorNavClickLockRef.current = null
   }, [form])
@@ -795,6 +934,38 @@ function ChannelMutateDrawerContent({
     [form, t]
   )
 
+  const handleQuickCreateChange = (value: string) => {
+    setQuickCreateText(value)
+    const { baseUrl, apiKey } = parseQuickCreateText(value)
+
+    if (!value.trim()) {
+      const filled = quickCreateFilledRef.current
+      if (filled.baseUrl && form.getValues('base_url') === filled.baseUrl) {
+        form.setValue('base_url', '', { shouldDirty: true, shouldValidate: true })
+      }
+      if (filled.apiKey && form.getValues('key') === filled.apiKey) {
+        form.setValue('key', '', { shouldDirty: true, shouldValidate: true })
+      }
+      quickCreateFilledRef.current = { baseUrl: '', apiKey: '' }
+      return
+    }
+
+    if (baseUrl) {
+      form.setValue('base_url', baseUrl, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+      quickCreateFilledRef.current.baseUrl = baseUrl
+    }
+    if (apiKey) {
+      form.setValue('key', apiKey, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+      quickCreateFilledRef.current.apiKey = apiKey
+    }
+  }
+
   const pasteConnectionInfoFromClipboard = useCallback(async () => {
     if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) {
       toast.error(t('Unable to read clipboard'))
@@ -822,13 +993,6 @@ function ChannelMutateDrawerContent({
   const isAnyLoading = isChannelLoading || isLoadingGroups || isLoadingAllModels || isLoadingPrefillGroups
   const supportsMultiKeyAddMode =
     currentType !== 57 && !(currentType === 41 && vertexKeyType === 'api_key')
-  const addModeOptions = useMemo(
-    () =>
-      supportsMultiKeyAddMode
-        ? ADD_MODE_OPTIONS
-        : ADD_MODE_OPTIONS.filter((option) => option.value === 'single'),
-    [supportsMultiKeyAddMode]
-  )
 
   const advancedCustomStats = useMemo(
     () => getAdvancedCustomStats(currentAdvancedCustom),
@@ -1208,6 +1372,7 @@ function ChannelMutateDrawerContent({
     if (isEditing && channelData?.data) {
       const defaults = transformChannelToFormDefaults(channelData.data)
       form.reset(defaults)
+      setQuickCreateText('')
       setActiveEditorSectionId(CHANNEL_EDITOR_SECTION_IDS.identity)
 
       // Store initial values for comparison
@@ -1220,6 +1385,7 @@ function ChannelMutateDrawerContent({
       lastJailbreakPresetRef.current = defaults.system_prompt_preset || ''
     } else if (!isEditing && !isInline) {
       form.reset(CHANNEL_FORM_DEFAULT_VALUES)
+      setQuickCreateText('')
       setActiveEditorSectionId(CHANNEL_EDITOR_SECTION_IDS.identity)
 
       initialModelsRef.current = []
@@ -1449,15 +1615,6 @@ function ChannelMutateDrawerContent({
     form.setValue('models', '')
     toast.success(t('Cleared all models'))
   }, [form, t])
-
-  const handleCopyModels = useCallback(async () => {
-    const models = form.getValues('models')
-    if (!models?.trim()) {
-      toast.info(t('No models to copy'))
-      return
-    }
-    await copyToClipboard(models)
-  }, [form, copyToClipboard, t])
 
   // Handle adding prefill group models
   const handleAddPrefillGroup = useCallback(
@@ -1729,9 +1886,14 @@ function ChannelMutateDrawerContent({
     [getEditorScrollContainer]
   )
 
+  const handleBackToTop = useCallback(() => {
+    editorScrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
   const updateActiveEditorSection = useCallback(() => {
     const scroller = editorScrollContainerRef.current
     if (!scroller) return
+    setShowBackToTop(scroller.scrollTop > 240)
 
     const clickLock = editorNavClickLockRef.current
     if (clickLock) {
@@ -1963,6 +2125,14 @@ function ChannelMutateDrawerContent({
                 <ChannelEditorLoadingState />
               ) : (
                 <div className='grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start min-h-0'>
+                  {isPresented && (
+                    <ChannelMobileSectionNav
+                      items={editorNavItems}
+                      activeItemId={activeEditorSectionId}
+                      onNavigate={handleEditorNavNavigate}
+                      navigationLabel={t('Channels')}
+                    />
+                  )}
                   <ChannelEditorNav
                     providerLogo={
                       <ChannelTypeLogo type={currentType} size={18} />
@@ -1982,7 +2152,7 @@ function ChannelMutateDrawerContent({
                       className='scroll-mt-4'
                     >
                       <ChannelBasicSection>
-                        <div className='grid gap-4 sm:grid-cols-2'>
+                        <div className='flex flex-col gap-3'>
                           <fieldset
                             disabled={sensitiveLocked}
                             className='border-0 p-0 min-w-0 disabled:opacity-60'
@@ -1991,9 +2161,11 @@ function ChannelMutateDrawerContent({
                               control={form.control}
                               name='type'
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>{t('Type *')}</FormLabel>
-                                  <FormControl>
+                                <FormItem className='flex items-center gap-3'>
+                                  <FormLabel className='w-16 shrink-0'>
+                                    {t('Type *')}
+                                  </FormLabel>
+                                  <FormControl className='min-w-0 flex-1'>
                                     <div className='relative'>
                                       <span className='pointer-events-none absolute top-1/2 left-3 z-10 flex -translate-y-1/2'>
                                         <ChannelTypeLogo
@@ -2041,16 +2213,18 @@ function ChannelMutateDrawerContent({
                             control={form.control}
                             name='name'
                             render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>{t('Name *')}</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    placeholder={t(FIELD_PLACEHOLDERS.NAME)}
-                                    {...field}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
+                                <FormItem className='flex items-center gap-3'>
+                                  <FormLabel className='w-16 shrink-0'>
+                                    {t('Name *')}
+                                  </FormLabel>
+                                  <FormControl className='min-w-0 flex-1'>
+                                    <Input
+                                      placeholder={t(FIELD_PLACEHOLDERS.NAME)}
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
                             )}
                           />
                         </div>
@@ -2082,38 +2256,6 @@ function ChannelMutateDrawerContent({
                           />
                         )}
 
-                        {currentType === 1 && (
-                          <fieldset
-                            disabled={sensitiveLocked}
-                            className='border-0 p-0 disabled:opacity-60'
-                          >
-                            <FormField
-                              control={form.control}
-                              name='openai_organization'
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>
-                                    {t('OpenAI Organization')}
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      placeholder={t('org-...')}
-                                      {...field}
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    {sensitiveLocked
-                                      ? t(
-                                          'No permission to perform this action'
-                                        )
-                                      : t(FIELD_DESCRIPTIONS.OPENAI_ORG)}
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </fieldset>
-                        )}
                       </ChannelBasicSection>
                     </div>
 
@@ -2779,30 +2921,47 @@ function ChannelMutateDrawerContent({
                                 )}
                               />
                             )}
-
                             {/* General base_url for other types */}
                             {![3, 8, 22, 36, 45].includes(currentType) && (
-                              <FormField
-                                control={form.control}
-                                name='base_url'
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>{t('Base URL')}</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder={t(
-                                          FIELD_PLACEHOLDERS.BASE_URL
-                                        )}
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormDescription>
-                                      {t(FIELD_DESCRIPTIONS.BASE_URL)}
-                                    </FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
+                              <>
+                                <FormItem className='space-y-2'>
+                                  <FormLabel>{t('Quick Create')}</FormLabel>
+                                  <FormControl>
+                                    <Textarea
+                                      rows={4}
+                                      spellCheck={false}
+                                      className='text-sm'
+                                      placeholder={t(
+                                        'e.g.\nBase URL: https://api.openai.com/v1\nAPI Key: sk-xxxxxxxxxxxxxxxxxxxx'
+                                      )}
+                                      value={quickCreateText}
+                                      onChange={(event) =>
+                                        handleQuickCreateChange(
+                                          event.target.value
+                                        )
+                                      }
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                                <FormField
+                                  control={form.control}
+                                  name='base_url'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>{t('Base URL')}</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder={t(
+                                            FIELD_PLACEHOLDERS.BASE_URL
+                                          )}
+                                          {...field}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </>
                             )}
 
                             {currentType === CHANNEL_TYPE_ADVANCED_CUSTOM && (
@@ -2877,60 +3036,11 @@ function ChannelMutateDrawerContent({
                               />
                             )}
 
-                            <ChannelAuthSection>
-                              {!isEditing && (
-                                <FormField
-                                  control={form.control}
-                                  name='multi_key_mode'
-                                  render={({ field }) => (
-                                    <FormItem className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-                                      <FormLabel className='text-muted-foreground text-xs font-medium'>
-                                        {t('Add Mode')}
-                                      </FormLabel>
-                                      <Select
-                                        items={addModeOptions.map((option) => ({
-                                          value: option.value,
-                                          label: t(option.label),
-                                        }))}
-                                        onValueChange={field.onChange}
-                                        value={field.value}
-                                      >
-                                        <FormControl>
-                                          <SelectTrigger
-                                            size='sm'
-                                            className='w-full sm:w-56'
-                                          >
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent
-                                          alignItemWithTrigger={false}
-                                        >
-                                          <SelectGroup>
-                                            {addModeOptions.map((option) => (
-                                              <SelectItem
-                                                key={option.value}
-                                                value={option.value}
-                                              >
-                                                {t(option.label)}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectGroup>
-                                        </SelectContent>
-                                      </Select>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                              )}
-
                               <FormField
                                 control={form.control}
                                 name='key'
                                 render={({ field }) => {
-                                  let keyPlaceholder = t(
-                                    getKeyPromptForType(currentType)
-                                  )
+                                  let keyPlaceholder = t('One key per line')
                                   if (isEditing) {
                                     keyPlaceholder = t(
                                       'Leave empty to keep existing key'
@@ -2961,10 +3071,8 @@ function ChannelMutateDrawerContent({
                                     keyPlaceholder = t(
                                       'Enter key, format: AccessKey|SecretAccessKey|Region'
                                     )
-                                  } else if (isBatchMode) {
-                                    keyPlaceholder = t(
-                                      'Enter one key per line for batch creation'
-                                    )
+                                  } else {
+                                    keyPlaceholder = t('One key per line')
                                   }
 
                                   let keyDescription: ReactNode = t(
@@ -2991,38 +3099,81 @@ function ChannelMutateDrawerContent({
                                         )}
                                       </>
                                     )
-                                  } else if (isBatchMode) {
-                                    keyDescription = t(
-                                      'Enter one API key per line for batch creation'
-                                    )
+                                  } else {
+                                    keyDescription = t('One key per line')
                                   }
                                   return (
                                     <FormItem>
-                                      <FormLabel>{t('API Key *')}</FormLabel>
+                                      <div className='flex flex-wrap items-center justify-between gap-2'>
+                                        <FormLabel className='flex items-center gap-1.5'>
+                                          <KeyRound
+                                            className='text-muted-foreground h-3.5 w-3.5'
+                                            aria-hidden='true'
+                                          />
+                                          {t('API Key *')}
+                                        </FormLabel>
+                                      </div>
                                       <FormControl>
                                         <Textarea
+                                          className='text-sm'
                                           placeholder={keyPlaceholder}
                                           rows={isBatchMode ? 8 : 4}
                                           {...field}
                                         />
                                       </FormControl>
-                                      <FormDescription>
-                                        <div className='flex flex-col gap-2'>
+                                      <div className='flex items-center gap-2'>
+                                        {isEditing && (
                                           <span>{keyDescription}</span>
-                                          {isBatchMode && (
-                                            <Button
-                                              type='button'
-                                              variant='outline'
-                                              size='sm'
-                                              onClick={handleDeduplicateKeys}
-                                              className='w-fit'
-                                            >
-                                              <Trash2 className='mr-2 h-4 w-4' />
-                                              {t('Remove Duplicates')}
-                                            </Button>
+                                        )}
+                                        {isBatchMode && (
+                                          <Button
+                                            type='button'
+                                            variant='outline'
+                                            size='sm'
+                                            onClick={handleDeduplicateKeys}
+                                          >
+                                            <Trash2 className='mr-2 h-4 w-4' />
+                                            {t('Remove Duplicates')}
+                                          </Button>
+                                        )}
+                                        {!isEditing &&
+                                          multiKeyMode === 'multi_to_single' && (
+                                            <div className='flex items-center gap-2'>
+                                              <span className='text-muted-foreground text-xs'>
+                                                {t('Multi-Key Strategy')}
+                                              </span>
+                                              <Select
+                                                value={multiKeyType}
+                                                onValueChange={(value) =>
+                                                  form.setValue(
+                                                    'multi_key_type',
+                                                    value as 'random' | 'polling',
+                                                    { shouldDirty: true }
+                                                  )
+                                                }
+                                              >
+                                                <SelectTrigger
+                                                  size='sm'
+                                                  className='w-24'
+                                                >
+                                                  <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent
+                                                  alignItemWithTrigger={false}
+                                                >
+                                                  <SelectGroup>
+                                                    <SelectItem value='random'>
+                                                      {t('Random')}
+                                                    </SelectItem>
+                                                    <SelectItem value='polling'>
+                                                      {t('Polling')}
+                                                    </SelectItem>
+                                                  </SelectGroup>
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
                                           )}
-                                        </div>
-                                      </FormDescription>
+                                      </div>
                                       {isEditing && canRevealChannelKey && (
                                         <div className='border-border/60 mt-4 flex flex-col gap-3 border-y border-dashed py-4'>
                                           <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
@@ -3189,67 +3340,6 @@ function ChannelMutateDrawerContent({
                                 />
                               )}
 
-                              {!isEditing &&
-                                multiKeyMode === 'multi_to_single' && (
-                                  <FormField
-                                    control={form.control}
-                                    name='multi_key_type'
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel>
-                                          {t('Multi-Key Strategy')}
-                                        </FormLabel>
-                                        <Select
-                                          items={[
-                                            {
-                                              value: 'random',
-                                              label: t('Random'),
-                                            },
-                                            {
-                                              value: 'polling',
-                                              label: t('Polling'),
-                                            },
-                                          ]}
-                                          onValueChange={field.onChange}
-                                          value={field.value}
-                                        >
-                                          <FormControl>
-                                            <SelectTrigger>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                          </FormControl>
-                                          <SelectContent
-                                            alignItemWithTrigger={false}
-                                          >
-                                            <SelectGroup>
-                                              <SelectItem value='random'>
-                                                {t('Random')}
-                                              </SelectItem>
-                                              <SelectItem value='polling'>
-                                                {t('Polling')}
-                                              </SelectItem>
-                                            </SelectGroup>
-                                          </SelectContent>
-                                        </Select>
-                                        <FormDescription>
-                                          {multiKeyType === 'polling' ? (
-                                            <span className='text-warning'>
-                                              {t(
-                                                'Polling mode requires Redis and memory cache, otherwise performance will be significantly degraded'
-                                              )}
-                                            </span>
-                                          ) : (
-                                            t(
-                                              'Randomly select a key from the pool for each request'
-                                            )
-                                          )}
-                                        </FormDescription>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                )}
-                            </ChannelAuthSection>
                           </fieldset>
                         </div>
                       </ChannelApiAccessSection>
@@ -3268,14 +3358,11 @@ function ChannelMutateDrawerContent({
                               name='models'
                               render={() => (
                                 <FormItem className='space-y-3'>
-                                  <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                                  <div className='flex items-center justify-between gap-2'>
                                     <div className='space-y-1'>
                                       <FormLabel>{t('Models *')}</FormLabel>
-                                      <FormDescription>
-                                        {t(FIELD_DESCRIPTIONS.MODELS)}
-                                      </FormDescription>
                                     </div>
-                                    <Badge variant='outline' className='w-fit'>
+                                    <Badge variant='outline' className='w-fit shrink-0'>
                                       {t('Selected {{count}}', {
                                         count: currentModelsArray.length,
                                       })}
@@ -3338,16 +3425,6 @@ function ChannelMutateDrawerContent({
                             <Separator className='my-4' />
 
                             <div className='space-y-3'>
-                              <div>
-                                <p className='text-sm font-medium'>
-                                  {t('Quick actions')}
-                                </p>
-                                <p className='text-muted-foreground text-xs'>
-                                  {t(
-                                    'Use presets or upstream discovery to populate the model list faster.'
-                                  )}
-                                </p>
-                              </div>
                               <div className='flex flex-wrap gap-2'>
                                 <Button
                                   type='button'
@@ -3360,7 +3437,7 @@ function ChannelMutateDrawerContent({
                                     className='mr-2 h-4 w-4'
                                     aria-hidden='true'
                                   />
-                                  {t('Fill Related Models')}
+                                  {t('Fill Related')}
                                 </Button>
                                 <Button
                                   type='button'
@@ -3373,7 +3450,7 @@ function ChannelMutateDrawerContent({
                                     className='mr-2 h-4 w-4'
                                     aria-hidden='true'
                                   />
-                                  {t('Fill All Models')}
+                                  {t('Fill All')}
                                 </Button>
                                 {MODEL_FETCHABLE_TYPES.has(currentType) && (
                                   <>
@@ -3388,7 +3465,7 @@ function ChannelMutateDrawerContent({
                                         className='mr-2 h-4 w-4'
                                         aria-hidden='true'
                                       />
-                                      {t('Fetch from Upstream')}
+                                      {t('Fetch Upstream')}
                                     </Button>
                                     {!isEditing && !canEditSensitive && (
                                       <span className='text-muted-foreground basis-full text-xs'>
@@ -3399,19 +3476,6 @@ function ChannelMutateDrawerContent({
                                     )}
                                   </>
                                 )}
-                                <Button
-                                  type='button'
-                                  variant='outline'
-                                  size='sm'
-                                  onClick={handleCopyModels}
-                                  disabled={currentModelsArray.length === 0}
-                                >
-                                  <Copy
-                                    className='mr-2 h-4 w-4'
-                                    aria-hidden='true'
-                                  />
-                                  {t('Copy All')}
-                                </Button>
                                 <Button
                                   type='button'
                                   variant='ghost'
@@ -3455,87 +3519,80 @@ function ChannelMutateDrawerContent({
                               name='model_mapping'
                               render={({ field }) => (
                                 <FormItem className='space-y-3'>
-                                  <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
-                                    <div className='space-y-1'>
-                                      <div className='flex items-center gap-2'>
-                                        <FormLabel className='mb-0'>
-                                          {t('Model Mapping')}
-                                        </FormLabel>
-                                        <Tooltip>
-                                          <TooltipTrigger
-                                            render={
-                                              <Button
-                                                type='button'
-                                                variant='ghost'
-                                                size='icon-sm'
-                                                className='text-muted-foreground hover:text-foreground size-auto p-0'
-                                                aria-label={t(
-                                                  'How model mapping works'
-                                                )}
-                                              />
-                                            }
-                                          >
-                                            <HelpCircle
-                                              className='h-4 w-4'
-                                              aria-hidden='true'
-                                            />
-                                          </TooltipTrigger>
-                                          <TooltipContent
-                                            side='top'
-                                            align='start'
-                                            className='max-w-xs space-y-2 text-left'
-                                          >
-                                            <p className='text-xs font-semibold tracking-wide uppercase'>
-                                              {t('Request flow')}
-                                            </p>
-                                            <div className='space-y-1 font-mono text-xs'>
-                                              {mappingPreviewPairs.map(
-                                                (pair) => (
-                                                  <div
-                                                    key={`${pair.source}-${pair.target}`}
-                                                    className='flex items-center gap-1'
-                                                  >
-                                                    <span>{pair.source}</span>
-                                                    <ArrowRight
-                                                      className='h-3.5 w-3.5 opacity-70'
-                                                      aria-hidden='true'
-                                                    />
-                                                    <span>{pair.target}</span>
-                                                  </div>
-                                                )
-                                              )}
-                                              {remainingMappingCount > 0 && (
-                                                <div className='text-[11px] opacity-70'>
-                                                  +{remainingMappingCount}{' '}
-                                                  {t('more mapping')}
-                                                  {remainingMappingCount > 1
-                                                    ? 's'
-                                                    : ''}
-                                                </div>
-                                              )}
-                                            </div>
-                                            <p className='text-[11px] leading-relaxed opacity-80'>
-                                              {t(
-                                                'Users call the model on the left. The platform forwards the request to the upstream model on the right.'
-                                              )}
-                                            </p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </div>
-                                      <FormDescription>
-                                        {t(FIELD_DESCRIPTIONS.MODEL_MAPPING)}
-                                      </FormDescription>
-                                    </div>
-                                  </div>
                                   <FormControl>
                                     <ModelMappingEditor
+                                      header={
+                                        <div className='flex shrink-0 items-center gap-1.5'>
+                                          <FormLabel className='mb-0 whitespace-nowrap'>
+                                            {t('Model Mapping')}
+                                          </FormLabel>
+                                          <Tooltip>
+                                            <TooltipTrigger
+                                              render={
+                                                <Button
+                                                  type='button'
+                                                  variant='ghost'
+                                                  size='icon-sm'
+                                                  className='text-muted-foreground hover:text-foreground size-auto p-0'
+                                                  aria-label={t(
+                                                    'How model mapping works'
+                                                  )}
+                                                />
+                                              }
+                                            >
+                                              <HelpCircle
+                                                className='h-4 w-4'
+                                                aria-hidden='true'
+                                              />
+                                            </TooltipTrigger>
+                                            <TooltipContent
+                                              side='top'
+                                              align='start'
+                                              className='max-w-xs space-y-2 text-left'
+                                            >
+                                              <p className='text-xs font-semibold tracking-wide uppercase'>
+                                                {t('Request flow')}
+                                              </p>
+                                              <div className='space-y-1 font-mono text-xs'>
+                                                {mappingPreviewPairs.map(
+                                                  (pair) => (
+                                                    <div
+                                                      key={`${pair.source}-${pair.target}`}
+                                                      className='flex items-center gap-1'
+                                                    >
+                                                      <span>{pair.source}</span>
+                                                      <ArrowRight
+                                                        className='h-3.5 w-3.5 opacity-70'
+                                                        aria-hidden='true'
+                                                      />
+                                                      <span>{pair.target}</span>
+                                                    </div>
+                                                  )
+                                                )}
+                                                {remainingMappingCount > 0 && (
+                                                  <div className='text-[11px] opacity-70'>
+                                                    +{remainingMappingCount}{' '}
+                                                    {t('more mapping')}
+                                                    {remainingMappingCount > 1
+                                                      ? 's'
+                                                      : ''}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <p className='text-[11px] leading-relaxed opacity-80'>
+                                                {t(
+                                                  'Users call the model on the left. The platform forwards the request to the upstream model on the right.'
+                                                )}
+                                              </p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </div>
+                                      }
                                       value={field.value || ''}
                                       onChange={field.onChange}
                                       disabled={isSubmitting}
-                                      sourceModelOptions={currentModelsArray}
-                                      targetModelOptions={modelOptions.map(
-                                        (option) => option.value
-                                      )}
+                                      plazaModelOptions={allModelsList}
+                                      upstreamModelOptions={currentModelsArray}
                                     />
                                   </FormControl>
                                   {modelMappingGuardrail.invalidJson && (
@@ -3594,7 +3651,7 @@ function ChannelMutateDrawerContent({
                               name='group'
                               render={({ field }) => (
                                 <FormItem className='space-y-3'>
-                                  <div className='space-y-1'>
+                                  <div className='flex items-center gap-2'>
                                     <FormLabel>{t('Groups *')}</FormLabel>
                                     <FormDescription>
                                       {t(FIELD_DESCRIPTIONS.GROUP)}
@@ -3630,7 +3687,7 @@ function ChannelMutateDrawerContent({
                         <div
                           id={ADVANCED_SETTINGS_SECTION_IDS.routingStrategy}
                           className={configuredAdvancedSectionClassName(
-                            'flex scroll-mt-4 flex-col gap-4',
+                            'flex scroll-mt-4 flex-col gap-4 rounded-lg p-4',
                             routingStrategyConfigured
                           )}
                         >
@@ -5006,6 +5063,20 @@ function ChannelMutateDrawerContent({
         </SheetContent>
       </Sheet>
 
+      {isPresented &&
+        showBackToTop &&
+        createPortal(
+          <Button
+            type='button'
+            size='icon'
+            className='fixed right-4 bottom-4 z-[60] rounded-full shadow-lg lg:bottom-6'
+            onClick={handleBackToTop}
+            aria-label={t('Back to top')}
+          >
+            <ArrowUp className='h-4 w-4' aria-hidden='true' />
+          </Button>,
+          document.body
+        )}
       {isInline && actionsContainer && editorActions
         ? createPortal(editorActions, actionsContainer)
         : null}

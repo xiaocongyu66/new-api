@@ -285,6 +285,9 @@ func SetApiRouter(router contract.Engine) {
 			subscriptionAdminRoute.POST("/bind", billing.AdminBindSubscription)
 			subscriptionAdminRoute.POST("/plans/:id/subscriptions/reset", billing.AdminResetPlanSubscriptions)
 
+			// Wallet credit with a user-visible top-up record (idempotent by request_id).
+			subscriptionAdminRoute.POST("/quota-compensate", billing.AdminCompensateQuota)
+
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", billing.AdminListUserSubscriptions)
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", billing.AdminCreateUserSubscription)

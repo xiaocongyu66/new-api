@@ -57,6 +57,7 @@ var settingDisplayAmountKeys = map[string]struct{}{
 	"qq_bot_setting.red_packet_max_amount": {},
 	"qq_bot_setting.transfer_min_amount":   {},
 	"qq_bot_setting.transfer_max_amount":   {},
+	"invite_reward.transfer_min_quota":     {},
 }
 
 func settingIsDisplayAmountKey(baseKey string) bool {
@@ -69,10 +70,15 @@ func settingIsDisplayAmountKey(baseKey string) bool {
 // 所以 base 与 _display 两种写法都要匹配，否则管理员用 display 键即可
 // 绕过合规确认。
 var inviteRewardOptionKeys = map[string]struct{}{
-	"QuotaForInviter":         {},
-	"QuotaForInvitee":         {},
-	"QuotaForInviter_display": {},
-	"QuotaForInvitee_display": {},
+	"QuotaForInviter":                          {},
+	"QuotaForInvitee":                          {},
+	"QuotaForInviter_display":                  {},
+	"QuotaForInvitee_display":                  {},
+	"invite_reward.inviter_mode":               {},
+	"invite_reward.rebate_multiplier":          {},
+	"invite_reward.rebate_trigger":             {},
+	"invite_reward.transfer_min_quota":         {},
+	"invite_reward.transfer_min_quota_display": {},
 }
 
 func isInviteRewardOptionKey(key string) bool {
@@ -103,8 +109,13 @@ func UpdateOption(c contract.Context) {
 	// 合规门必须在 _display 键归一之前匹配：设置页提交的是
 	// QuotaForInviter_display，键归一发生在下面的 TrimSuffix 分支。若这里
 	// 只认 base 键，管理员用 display 键即可绕过合规确认。
-	if isInviteRewardOptionKey(option.Key) &&
-		settingIsPositiveOptionValue(option.Value.(string)) &&
+	// A recharge mode is a paid feature too, even though its value is a mode
+	// name rather than a positive number; it needs the same confirmation.
+	inviteRechargeModeEnabled :=
+		option.Key == "invite_reward.inviter_mode" &&
+			option.Value.(string) == common.InviteRewardModeRecharge
+	if (inviteRechargeModeEnabled ||
+		(isInviteRewardOptionKey(option.Key) && settingIsPositiveOptionValue(option.Value.(string)))) &&
 		!billing.IsPaymentComplianceConfirmed() {
 		common.CtxApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 		return
