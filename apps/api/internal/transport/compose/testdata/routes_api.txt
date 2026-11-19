@@ -291,6 +291,7 @@ POST /api/vendors/
 POST /api/verify
 POST /api/waffo-pancake/webhook/:env
 POST /api/waffo/webhook
+POST /api/wallpaper/refresh
 PUT /api/channel/
 PUT /api/channel/probe/settings
 PUT /api/channel/probe/policy
