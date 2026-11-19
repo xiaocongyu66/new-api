@@ -32,7 +32,8 @@ import { useEffect, useRef, useState } from 'react'
  * starts: React StrictMode double-invokes mount effects, and a start-time
  * ref would make the second invocation skip the animation and leave the
  * display stuck at zero for data that was already cached (e.g. paging a
- * list whose query is warm).
+ * list whose query is warm). The settled-target fast path also checks the
+ * painted value because a later retarget can interrupt that target mid-flight.
  */
 export function useCountUp(
   target: number,
@@ -71,7 +72,11 @@ export function useCountUp(
       displayRef.current = 0
       return
     }
-    if (wasEnabled && target === settledRef.current) {
+    if (
+      wasEnabled &&
+      target === settledRef.current &&
+      displayRef.current === target
+    ) {
       return
     }
 

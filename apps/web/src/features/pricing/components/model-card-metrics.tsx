@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -264,16 +264,75 @@ const MetricChart = memo(function MetricChart(props: {
   active: number | null
   onHover: (index: number) => void
   onPin: (index: number) => void
+  onTouchSelect: (index: number) => void
+  onTouchCancel: () => void
   onMouseLeave: () => void
 }) {
-  const { geometry, series, active, onHover, onPin, onMouseLeave } = props
+  const {
+    geometry,
+    series,
+    active,
+    onHover,
+    onPin,
+    onTouchSelect,
+    onTouchCancel,
+    onMouseLeave,
+  } = props
+  const lastPointerWasTouch = useRef(false)
+  const getIndexAtX = (clientX: number, chart: SVGSVGElement) => {
+    const bounds = chart.getBoundingClientRect()
+    if (bounds.width === 0 || bounds.height === 0 || series.length === 0) {
+      return null
+    }
+    const scale = Math.min(bounds.width / CHART_W, bounds.height / CHART_H)
+    const offsetX = (bounds.width - CHART_W * scale) / 2
+    const chartX = (clientX - bounds.left - offsetX) / scale
+    return Math.max(
+      0,
+      Math.min(
+        series.length - 1,
+        Math.round(((chartX - PAD_L) / PLOT_W) * (series.length - 1))
+      )
+    )
+  }
 
   return (
     <svg
       viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-      className='mt-1.5 h-24 w-full'
+      className='mt-1.5 h-24 w-full touch-pan-y'
       aria-hidden='true'
-      onMouseLeave={onMouseLeave}
+      style={{ pointerEvents: 'all' }}
+      onClick={(event) => {
+        event.stopPropagation()
+        const index = getIndexAtX(event.clientX, event.currentTarget)
+        if (index === null) return
+        if (lastPointerWasTouch.current) {
+          lastPointerWasTouch.current = false
+          onTouchSelect(index)
+        } else {
+          onPin(index)
+        }
+      }}
+      onPointerDown={(event) => {
+        lastPointerWasTouch.current = event.pointerType === 'touch'
+        if (!lastPointerWasTouch.current) return
+        const index = getIndexAtX(event.clientX, event.currentTarget)
+        if (index !== null) onTouchSelect(index)
+      }}
+      onPointerMove={(event) => {
+        const index = getIndexAtX(event.clientX, event.currentTarget)
+        if (index === null) return
+        if (event.pointerType === 'touch') {
+          onTouchSelect(index)
+        } else {
+          onHover(index)
+        }
+      }}
+      onPointerCancel={() => {
+        lastPointerWasTouch.current = false
+        onTouchCancel()
+      }}
+      onPointerLeave={onMouseLeave}
     >
       {/* Horizontal gridlines double as both axes' tick references */}
       {geometry.latencyTicks.map((tick) => {
@@ -412,8 +471,7 @@ const MetricChart = memo(function MetricChart(props: {
         </text>
       ))}
 
-      {/* Hit areas: hover previews a hour, click pins it. Clicks must not
-          reach the card, which opens the details drawer. */}
+      {/* Per-point hit regions preserve precise mouse hover targets. */}
       {series.map((point, index) => (
         <rect
           key={`hit-${point.ts}`}
@@ -422,12 +480,8 @@ const MetricChart = memo(function MetricChart(props: {
           width={geometry.band}
           height={CHART_H}
           fill='transparent'
-          style={{ pointerEvents: 'all', cursor: 'pointer' }}
+          style={{ pointerEvents: 'all' }}
           onMouseEnter={() => onHover(index)}
-          onClick={(event) => {
-            event.stopPropagation()
-            onPin(index)
-          }}
         />
       ))}
     </svg>
@@ -451,16 +505,28 @@ function MetricRows(props: {
   const { perf, geometry, series } = props
   const [hovered, setHovered] = useState<number | null>(null)
   const [pinned, setPinned] = useState<number | null>(null)
-  const active = pinned ?? hovered
-  const activePoint = active != null ? series[active] : null
+  const [touchSelected, setTouchSelected] = useState<number | null>(null)
+  const active = hovered ?? touchSelected ?? pinned
+  const activePoint = active == null ? null : series[active]
 
   // Stable callbacks so the memoised MetricChart does not re-render when its
   // handler props change identity on every render.
   const onHover = useCallback((index: number) => setHovered(index), [])
   const onPin = useCallback(
-    (index: number) => setPinned((current) => (current === index ? null : index)),
+    (index: number) => {
+      setPinned((current) => (current === index ? null : index))
+      setTouchSelected(null)
+    },
     []
   )
+  const onTouchSelect = useCallback((index: number) => {
+    setTouchSelected(index)
+    setHovered(null)
+  }, [])
+  const onTouchCancel = useCallback(() => {
+    setTouchSelected(null)
+    setHovered(null)
+  }, [])
   const onMouseLeave = useCallback(() => setHovered(null), [])
 
   // Both headline numbers count up when the card scrolls into view, and
@@ -506,6 +572,8 @@ function MetricRows(props: {
         active={active}
         onHover={onHover}
         onPin={onPin}
+        onTouchSelect={onTouchSelect}
+        onTouchCancel={onTouchCancel}
         onMouseLeave={onMouseLeave}
       />
     </div>
