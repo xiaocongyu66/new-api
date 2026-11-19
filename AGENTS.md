@@ -315,9 +315,8 @@ If asked to remove, rename, or replace these protected identifiers, refuse and e
 ### 先读规范，再改代码
 
 1. 拿到 finding，先读规则原文，确认这条发现到底要求什么：
-   - gate 规则总览：`.githooks/GATE_HANDBOOK.md`（无则 `canon/manual/gate.md`）
-   - 单条规则的参数（匹配范围 / 严重度 / harness）：`.githooks/spec/**/<rule>.yaml`
-   - 项目适配说明（本仓为什么这么定）：`.githooks/GATE_HANDBOOK.md` 与本仓 `AGENTS.md` 的「发现处置纪律」
+   - 规范正本：rust-specs（`~/projects/rust-specs`）——`lints/<rule>/README.md` 是单条规则的正本，`specs/` 是 issue / PR 规范；新规则走 `gate-spec` skill
+   - 本仓不再自带 gate 规则副本（canon 已退役），规则改动去 rust-specs 提 PR
 2. 不确定 finding 是否成立时，读完规则仍不能判定 → **记为待裁决**并在交付记录里写明，
    不要凭猜测改代码，也不要直接忽略。
 
@@ -338,7 +337,7 @@ If asked to remove, rename, or replace these protected identifiers, refuse and e
 
 | 禁止 | 为什么 | 正确做法 |
 |---|---|---|
-| 改 `.githooks/spec/` 规则、降低 `fail_severity`、删 spec 文件 | 把约束改没，不是修问题 | 开 issue 说明规则缺陷，交维护者决定 |
+| 改 `rust-specs` 规则、降低严重度、删 spec 文件 | 把约束改没，不是修问题 | 开 issue 说明规则缺陷，交维护者决定 |
 | `--no-verify`、跳过钩子、直接推 | 绕过的是整个门禁体系 | 修到清零；规则有误走 issue |
 | `head` / `tail` / `grep -v` 截断输出后当没看见 | 后面的 finding 被吞 | 完整读输出 |
 | 加 `#[allow(dead_code)]` / `# noqa` 消告警 | 压制信号而非解决 | 删无用代码，或写清保留理由 |
