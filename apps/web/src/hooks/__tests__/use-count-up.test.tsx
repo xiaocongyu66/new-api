@@ -43,13 +43,18 @@ function RetargetProbe(props: { duration: number }) {
       <button
         type='button'
         data-testid='retarget'
-        onClick={() => setTarget(500)}
+        onClick={() => setTarget((current) => (current === 100 ? 500 : 100))}
       />
     </>
   )
 }
 
-async function mount(element: React.ReactElement) {
+type MountedApp = {
+  container: HTMLElement
+  unmount: () => Promise<void>
+}
+
+async function mount(element: React.ReactElement): Promise<MountedApp> {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -90,6 +95,62 @@ async function waitForSettle(container: HTMLElement, expected: string) {
   throw new Error(`count-up never settled at ${expected}; last value ${last}`)
 }
 
+function mockAnimationFrames() {
+  const callbacks = new Map<number, FrameRequestCallback>()
+  let nextId = 0
+  const requestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'requestAnimationFrame'
+  )
+  const cancelAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'cancelAnimationFrame'
+  )
+
+  Object.defineProperty(globalThis, 'requestAnimationFrame', {
+    configurable: true,
+    value: (callback: FrameRequestCallback) => {
+      const id = ++nextId
+      callbacks.set(id, callback)
+      return id
+    },
+  })
+  Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+    configurable: true,
+    value: (id: number) => callbacks.delete(id),
+  })
+
+  return {
+    flush(timestamp: number) {
+      act(() => {
+        const pending = [...callbacks.values()]
+        callbacks.clear()
+        for (const callback of pending) callback(timestamp)
+      })
+    },
+    restore() {
+      if (requestAnimationFrameDescriptor) {
+        Object.defineProperty(
+          globalThis,
+          'requestAnimationFrame',
+          requestAnimationFrameDescriptor
+        )
+      } else {
+        Reflect.deleteProperty(globalThis, 'requestAnimationFrame')
+      }
+      if (cancelAnimationFrameDescriptor) {
+        Object.defineProperty(
+          globalThis,
+          'cancelAnimationFrame',
+          cancelAnimationFrameDescriptor
+        )
+      } else {
+        Reflect.deleteProperty(globalThis, 'cancelAnimationFrame')
+      }
+    },
+  }
+}
+
 describe('useCountUp', () => {
   test('settles at the target after the animation', async () => {
     const mounted = await mount(<Probe target={1686} />)
@@ -126,6 +187,39 @@ describe('useCountUp', () => {
     })
     await waitForSettle(mounted.container, '500')
     await mounted.unmount()
+  })
+
+  test('resumes toward a settled target after an interrupted retarget', async () => {
+    const frames = mockAnimationFrames()
+    let mounted: MountedApp | undefined
+    try {
+      mounted = await mount(<RetargetProbe duration={400} />)
+      frames.flush(performance.now() + 500)
+      assert.equal(readValue(mounted.container), '100')
+
+      const retarget = mounted.container.querySelector<HTMLButtonElement>(
+        '[data-testid="retarget"]'
+      )
+      assert.ok(retarget)
+      await act(async () => {
+        retarget.click()
+      })
+      frames.flush(performance.now() + 100)
+      assert.notEqual(readValue(mounted.container), '100')
+      await act(async () => {
+        retarget.click()
+      })
+      assert.notEqual(readValue(mounted.container), '100')
+      frames.flush(performance.now() + 100)
+      frames.flush(performance.now() + 500)
+      assert.equal(readValue(mounted.container), '100')
+    } finally {
+      try {
+        await mounted?.unmount()
+      } finally {
+        frames.restore()
+      }
+    }
   })
 
   test('non-finite targets render zero', async () => {

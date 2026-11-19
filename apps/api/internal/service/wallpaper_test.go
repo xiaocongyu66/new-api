@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/internal/common"
@@ -81,4 +82,102 @@ func TestFetchWallpaperFileURLMergesExistingQuery(t *testing.T) {
 		server.URL+"/search?existing=1&q={keyword}&category={category}")
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/a.jpg", fileURL)
+}
+
+func TestParseWallpaperSource(t *testing.T) {
+	tests := []struct {
+		name     string
+		entry    string
+		kind     wallpaperSourceKind
+		baseURL  string
+		template string
+	}{
+		{name: "legacy url", entry: "https://example.com/search?q=chiikawa", kind: wallpaperSourceWallhaven, baseURL: "https://example.com/search", template: "q=chiikawa"},
+		{name: "direct prefix", entry: "direct:https://example.com/a.jpg", kind: wallpaperSourceDirect, baseURL: "https://example.com/a.jpg"},
+		{name: "explicit direct", entry: "direct|https://example.com/a.jpg", kind: wallpaperSourceDirect, baseURL: "https://example.com/a.jpg"},
+		{name: "wallhaven", entry: "wallhaven|https://example.com/api?q={keyword}", kind: wallpaperSourceWallhaven, baseURL: "https://example.com/api", template: "q={keyword}"},
+		{name: "gelbooru", entry: "gelbooru|https://example.com/index.php?page=dapi&tags={keyword}", kind: wallpaperSourceGelbooru, baseURL: "https://example.com/index.php", template: "page=dapi&tags={keyword}"},
+		{name: "e926", entry: "e926|https://example.com/posts.json?tags={keyword}", kind: wallpaperSourceE926, baseURL: "https://example.com/posts.json", template: "tags={keyword}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseWallpaperSource(tt.entry)
+			assert.Equal(t, tt.kind, got.kind)
+			assert.Equal(t, tt.baseURL, got.baseURL)
+			assert.Equal(t, tt.template, got.template)
+		})
+	}
+}
+
+func TestWallpaperSourceExtractFileURL(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry string
+		body  string
+		want  string
+	}{
+		{
+			name:  "wallhaven path",
+			entry: "wallhaven|https://example.com/api",
+			body:  `{"data":[{"path":"https://example.com/a.jpg"}]}`,
+			want:  "https://example.com/a.jpg",
+		},
+		{
+			name:  "gelbooru file_url",
+			entry: "gelbooru|https://example.com/index.php",
+			body:  `[{"file_url":"https://example.com/b.jpg"}]`,
+			want:  "https://example.com/b.jpg",
+		},
+		{
+			name:  "gelbooru directory fallback",
+			entry: "gelbooru|https://example.com/index.php",
+			body:  `[{"directory":42,"image":"c.jpg"}]`,
+			want:  "https://example.com/images/42/c.jpg",
+		},
+		{
+			name:  "e926 original",
+			entry: "e926|https://example.com/posts.json",
+			body:  `[{"files":{"original":{"url":"https://example.com/d.jpg"}}}]`,
+			want:  "https://example.com/d.jpg",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fileURL, err := parseWallpaperSource(tt.entry).extractFileURL([]byte(tt.body), "chiikawa")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, fileURL)
+		})
+	}
+}
+
+func TestWallpaperSourceCooldown(t *testing.T) {
+	entry := "cooldown-test|https://example.com/api"
+	reset := func() {
+		wallpaperSourceState.Lock()
+		delete(wallpaperSourceState.failures, entry)
+		delete(wallpaperSourceState.cooldown, entry)
+		wallpaperSourceState.Unlock()
+	}
+	reset()
+	t.Cleanup(reset)
+
+	assert.True(t, wallpaperSourceAvailable(entry))
+	wallpaperSourceResult(entry, false)
+	wallpaperSourceResult(entry, false)
+	assert.True(t, wallpaperSourceAvailable(entry))
+	wallpaperSourceResult(entry, false)
+	assert.False(t, wallpaperSourceAvailable(entry))
+	wallpaperSourceResult(entry, true)
+	assert.True(t, wallpaperSourceAvailable(entry))
+}
+
+func TestDefaultWallpaperSourcesExcludeHumanCharacters(t *testing.T) {
+	for _, entry := range defaultWallpaperAPIs {
+		assert.False(t, strings.HasPrefix(entry, "direct|"),
+			"unfiltered direct sources return anime character art: %s", entry)
+		if strings.HasPrefix(entry, "gelbooru|") || strings.HasPrefix(entry, "e926|") {
+			assert.Contains(t, entry, "-1girl", "booru source must exclude human characters: %s", entry)
+			assert.Contains(t, entry, "-1boy", "booru source must exclude human characters: %s", entry)
+		}
+	}
 }

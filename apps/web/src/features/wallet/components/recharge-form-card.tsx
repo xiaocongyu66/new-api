@@ -149,8 +149,8 @@ export function RechargeFormCard({
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
-  // Payment-side amounts are labeled with the 金额名称 (falls back to the
-  // configured currency symbol when unset), independent of the 额度 display.
+  // Payment-side amounts use the configured payment unit symbol ($/¥/custom),
+  // independent of the 额度 display.
   const paymentAmountOpts = {
     digitsLarge: 2,
     digitsSmall: 4,
@@ -169,10 +169,10 @@ export function RechargeFormCard({
             {/* Preset Amounts Skeleton */}
             <div className='space-y-3'>
               <Skeleton className='h-3 w-16' />
-              <div className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
+              <div className='grid grid-cols-2 gap-3 lg:grid-cols-3'>
                 {Array.from({ length: 8 }, (_, index) => `preset-${index}`).map(
                   (key) => (
-                    <Skeleton key={key} className='h-[72px] rounded-lg' />
+                    <Skeleton key={key} className='h-[76px] rounded-lg sm:h-[82px]' />
                   )
                 )}
               </div>
@@ -240,7 +240,7 @@ export function RechargeFormCard({
                   <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                     {t('Amount')}
                   </Label>
-                  <div className='grid grid-cols-2 gap-1.5 sm:gap-3 md:grid-cols-4'>
+                  <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
                     {presetAmounts.map((preset) => {
                       const discount =
                         preset.discount ||
@@ -249,7 +249,6 @@ export function RechargeFormCard({
                       const {
                         displayValue,
                         actualPrice,
-                        savedAmount,
                         hasDiscount,
                       } = calculatePresetPricing(
                         preset.value,
@@ -262,39 +261,37 @@ export function RechargeFormCard({
                           key={preset.value}
                           variant='outline'
                           className={cn(
-                            'flex min-h-16 flex-col items-start rounded-lg px-3 py-2.5 text-left whitespace-normal sm:min-h-[72px] sm:p-4',
+                            'flex min-h-[76px] flex-col items-start rounded-lg px-3 py-2.5 text-left whitespace-normal sm:min-h-[82px] sm:p-3.5',
                             selectedPreset === preset.value
                               ? 'border-foreground bg-foreground/5 dark:border-foreground dark:bg-foreground/10'
                               : 'border-muted'
                           )}
                           onClick={() => onSelectPreset(preset)}
                         >
-                          <div className='flex w-full items-center justify-between'>
-                            <div className='text-base font-semibold sm:text-lg'>
-                              {formatNumber(displayValue)}
+                          <div className='flex w-full items-start justify-between gap-1'>
+                            <div className='flex items-baseline gap-0.5'>
+                              {/* '+' is a language-neutral sign; no i18n key needed */}
+                              <span className='text-base font-bold text-green-500 sm:text-lg'>+</span>
+                              <span className='text-base font-semibold tabular-nums sm:text-lg'>
+                                {formatNumber(displayValue)}
+                              </span>
                             </div>
                             {hasDiscount && (
-                              <div className='text-xs font-medium text-green-600'>
+                              <span className='rounded-full border border-green-500/40 bg-green-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none whitespace-nowrap text-green-600'>
                                 {getDiscountLabel(discount)}
-                              </div>
-                            )}
-                          </div>
-                          <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                            Pay{' '}
-                            {formatPaymentAmount(
-                              actualPrice,
-                              paymentAmountOpts
-                            )}
-                            {hasDiscount && savedAmount > 0 && (
-                              <span className='text-green-600'>
-                                {' '}
-                                • Save{' '}
-                                {formatPaymentAmount(
-                                  savedAmount,
-                                  paymentAmountOpts
-                                )}
                               </span>
                             )}
+                          </div>
+                          <div className='mt-0.5 flex w-full items-baseline justify-between gap-1 border-t border-border/70 pt-1'>
+                            <span className='text-[13px] font-medium tabular-nums'>
+                              {formatPaymentAmount(
+                                actualPrice,
+                                paymentAmountOpts
+                              )}
+                            </span>
+                            <span className='text-muted-foreground/60 shrink-0 text-[9px]'>
+                              {t('Pay')}
+                            </span>
                           </div>
                         </Button>
                       )

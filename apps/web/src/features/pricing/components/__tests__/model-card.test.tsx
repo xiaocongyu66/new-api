@@ -22,7 +22,7 @@ import assert from 'node:assert/strict'
 import { resetSharedDomWindow } from '@/test-utils/happy-dom-env'
 
 import type { PricingModel } from '../../types'
-
+import type { ModelPerfBadgeData } from '../model-perf-badge'
 // 卡片图标走 @lobehub/icons，其模块图在 bun 下会因 @lobehub/ui 缺少 Tag 导出而加载失败；
 // 本测试不覆盖图标渲染，换成空实现避开该依赖图。
 mock.module('@/lib/lobe-icon', () => ({
@@ -81,9 +81,13 @@ function buildModel(): PricingModel {
 type MountedCard = {
   container: HTMLDivElement
   clicks: string[]
+  card: HTMLElement
 }
 
-async function mountCard(): Promise<MountedCard> {
+async function mountCard(
+  perf?: ModelPerfBadgeData,
+  visible = true
+): Promise<MountedCard> {
   const clicks: string[] = []
   const container = document.createElement('div')
   document.body.append(container)
@@ -93,6 +97,8 @@ async function mountCard(): Promise<MountedCard> {
     root.render(
       <I18nextProvider i18n={i18n}>
         <ModelCard
+          perf={perf}
+          visible={visible}
           model={buildModel()}
           onClick={() => {
             clicks.push(MODEL_NAME)
@@ -102,7 +108,8 @@ async function mountCard(): Promise<MountedCard> {
     )
   )
 
-  return { container, clicks }
+  const card = getCard(container)
+  return { container, clicks, card }
 }
 
 function getCard(container: HTMLDivElement): HTMLElement {
@@ -197,6 +204,112 @@ describe('Model square card as a single activation surface', () => {
 
     await unmountCard(mounted)
   })
+
+  test('chart taps and touch drags select points without opening card details', async () => {
+    const perf: ModelPerfBadgeData = {
+      avg_latency_ms: 300,
+      success_rate: 90,
+      avg_tps: 30,
+      recent_series: [
+        { ts: 1_700_000_000, latency_ms: 200, success_rate: 80 },
+        { ts: 1_700_003_600, latency_ms: 300, success_rate: 90 },
+        { ts: 1_700_007_200, latency_ms: 400, success_rate: 100 },
+      ],
+    }
+    const mounted = await mountCard(perf, false)
+    const chart = mounted.card.querySelector<SVGSVGElement>(
+      'svg[viewBox="0 0 400 96"]'
+    )
+    assert.ok(chart)
+    chart.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 400,
+        bottom: 96,
+        width: 400,
+        height: 96,
+        toJSON: () => ({}),
+      }) as DOMRect
+
+    const activeX = () =>
+      Number(chart.querySelector('line.fill-foreground')?.getAttribute('x1'))
+    const clickAt = (clientX: number) => {
+      chart.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, clientX, clientY: 48 })
+      )
+    }
+
+    await act(async () => clickAt(150))
+    assert.equal(activeX(), 201)
+    assert.deepEqual(mounted.clicks, [])
+
+    await act(async () => {
+      chart.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          clientX: 40,
+          clientY: 48,
+          pointerType: 'touch',
+        })
+      )
+      chart.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 362,
+          clientY: 48,
+          pointerType: 'touch',
+        })
+      )
+    })
+    assert.equal(activeX(), 362)
+
+    await act(async () => clickAt(362))
+    assert.equal(activeX(), 362)
+    assert.deepEqual(mounted.clicks, [])
+
+    await act(async () => chart.dispatchEvent(new PointerEvent('pointerleave')))
+    assert.equal(activeX(), 362)
+
+    await act(async () => {
+      chart.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          clientX: 40,
+          clientY: 48,
+          pointerType: 'touch',
+        })
+      )
+    })
+    assert.equal(activeX(), 40)
+
+    await act(async () => {
+      chart.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 362,
+          clientY: 48,
+          pointerType: 'touch',
+        })
+      )
+    })
+    assert.equal(activeX(), 362)
+    await act(async () => {
+      chart.dispatchEvent(
+        new PointerEvent('pointercancel', {
+          bubbles: true,
+          pointerType: 'touch',
+        })
+      )
+    })
+    assert.equal(activeX(), 201)
+    assert.deepEqual(mounted.clicks, [])
+
+    await unmountCard(mounted)
+  })
+
 
   test('swaps the title copy icon to a check after a successful copy', async () => {
     const mounted = await mountCard()
