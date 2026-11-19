@@ -42,6 +42,7 @@ import {
   AUTO_GROUP_FRAME_CLASS_NAME,
   AutoGroupFlowBorder,
   GroupRatioBadge,
+  type GroupRatio,
 } from './auto-group-visuals'
 
 export type ApiKeyGroupOption = {
@@ -49,7 +50,7 @@ export type ApiKeyGroupOption = {
   label: string
   desc?: string
   modelCount?: number
-  ratio?: number
+  ratio?: GroupRatio
 }
 
 type ApiKeyGroupComboboxProps = {
