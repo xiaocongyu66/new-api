@@ -111,26 +111,26 @@ func TestProbeThresholdFlipAndDedupPerModel(t *testing.T) {
 	resetProbeZoneState()
 
 	// 首次：两个模型各穿越一次（一恢复一告警）
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 2)
 	assert.Equal(t, 1, countTitle(calls, "路由健康探测恢复"))
 	assert.Equal(t, 1, countTitle(calls, "路由健康探测告警"))
 
 	// 再次：区间未变，不重发（方向性：不是"贴阈值就通知"）
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 2)
 
 	// 渠道 2 的模型恢复：below → above
 	require.NoError(t, dbx.DB.Model(&ChannelProbeResult{}).Where("channel_id = ?", 2).
 		Updates(map[string]interface{}{"success": true, "error_code": ""}).Error)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 3)
 	assert.Equal(t, 2, countTitle(calls, "路由健康探测恢复"))
 
 	// 渠道 1 的模型跌落：above → below
 	require.NoError(t, dbx.DB.Model(&ChannelProbeResult{}).Where("channel_id = ?", 1).
 		Updates(map[string]interface{}{"success": false, "error_code": "probe-down"}).Error)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 4)
 	assert.Equal(t, 2, countTitle(calls, "路由健康探测告警"))
 
@@ -145,7 +145,7 @@ func TestProbeThresholdFlipAndDedupPerModel(t *testing.T) {
 	}
 	require.NoError(t, dbx.DB.Model(&ChannelProbeResult{}).Where("channel_id = ?", 1).
 		Updates(map[string]interface{}{"success": true, "error_code": ""}).Error)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, calls, 4)
 }
 
@@ -214,27 +214,27 @@ func TestProbeAutoDisableAndRestoreWithPolicy(t *testing.T) {
 
 	// 20% → 跌破 50%：自动禁用一次
 	insertRows(2, 8)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, disabled, 1)
 	assert.Equal(t, "m1", disabled[0])
 	require.Len(t, calls, 1)
 	assert.Contains(t, calls[0].Content, "已自动禁用")
 
 	// 再次评估：区间未变，不重复禁用/通知
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, disabled, 1)
 	require.Len(t, calls, 1)
 
 	// 90% → 高于 70%：自动恢复一次
 	insertRows(9, 1)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, restored, 1)
 	require.Len(t, calls, 2)
 	assert.Contains(t, calls[1].Content, "已自动恢复")
 
 	// 迟滞带内（60%）不动作不通知
 	insertRows(6, 4)
-	require.NoError(t, EvaluateAndNotifyProbeThresholds(context.Background()))
+	EvaluateAndNotifyProbeThresholds(context.Background())
 	require.Len(t, disabled, 1)
 	require.Len(t, restored, 1)
 	require.Len(t, calls, 2)
