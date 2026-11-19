@@ -85,7 +85,8 @@ type MountedCard = {
 }
 
 async function mountCard(
-  perf?: ModelPerfBadgeData
+  perf?: ModelPerfBadgeData,
+  visible = true
 ): Promise<MountedCard> {
   const clicks: string[] = []
   const container = document.createElement('div')
@@ -97,6 +98,7 @@ async function mountCard(
       <I18nextProvider i18n={i18n}>
         <ModelCard
           perf={perf}
+          visible={visible}
           model={buildModel()}
           onClick={() => {
             clicks.push(MODEL_NAME)
@@ -214,7 +216,7 @@ describe('Model square card as a single activation surface', () => {
         { ts: 1_700_007_200, latency_ms: 400, success_rate: 100 },
       ],
     }
-    const mounted = await mountCard(perf)
+    const mounted = await mountCard(perf, false)
     const chart = mounted.card.querySelector<SVGSVGElement>(
       'svg[viewBox="0 0 400 96"]'
     )
