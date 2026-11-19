@@ -331,6 +331,8 @@ export type BillingSettings = {
   'invite_reward.rebate_trigger': 'first' | 'every'
   'invite_reward.transfer_min_quota': number
   'invite_reward.transfer_min_quota_display': number
+  'invite_reward.recharge_sources': string
+  'invite_reward.redemption_code_names': string
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean

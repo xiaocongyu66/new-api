@@ -378,6 +378,9 @@ const BILLING_SECTIONS = [
             transfer_min_quota_display: settings[
               'invite_reward.transfer_min_quota_display'
             ],
+            recharge_sources: settings['invite_reward.recharge_sources'],
+            redemption_code_names:
+              settings['invite_reward.redemption_code_names'],
           },
         }}
         complianceConfirmed={

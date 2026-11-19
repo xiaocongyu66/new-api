@@ -110,6 +110,7 @@ GET /api/ratio_config
 GET /api/ratio_sync/channels
 GET /api/redemption/
 GET /api/redemption/:id
+GET /api/redemption/names
 GET /api/redemption/search
 GET /api/reset_password
 GET /api/route_unit/audit

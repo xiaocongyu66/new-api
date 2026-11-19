@@ -2446,6 +2446,18 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
 		}
+		// Subscription purchases are a configurable invite-recharge source.
+		// The granted plan quota is the rebate basis; balance-funded purchases
+		// take a different path and never reach this transaction.
+		if err := applyInviteRechargeRewards(
+			tx,
+			order.UserId,
+			common.QuotaFromFloat(float64(plan.TotalAmount)),
+			common.InviteRewardRechargeSourceSubscription,
+			"",
+		); err != nil {
+			return err
+		}
 		order.Status = common.TopUpStatusSuccess
 		order.CompleteTime = common.GetTimestamp()
 		if providerPayload != "" {

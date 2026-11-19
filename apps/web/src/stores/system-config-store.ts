@@ -49,6 +49,14 @@ export interface CurrencyConfig {
   inviterRewardDisplay?: number
   /** Reward granted to the invitee per successful invite, already converted to the display currency by /api/status (invitee_reward_display) */
   inviteeRewardDisplay?: number
+  /** Inviter reward method configured on the billing settings page */
+  inviteRewardMode?: 'direct' | 'recharge'
+  /** Rebate multiplier applied when the inviter reward method is recharge */
+  inviteRewardRebateMultiplier?: number
+  /** First successful recharge only, or every recharge */
+  inviteRewardRebateTrigger?: 'first' | 'every'
+  /** Minimum affiliate quota (display currency) transferable to balance */
+  inviteRewardTransferMinDisplay?: number
 }
 
 export interface SystemConfig {
@@ -69,6 +77,10 @@ export const DEFAULT_CURRENCY_CONFIG: CurrencyConfig = {
   customCurrencyExchangeRate: 1,
   amountName: '',
   amountUnit: 'usd',
+  inviteRewardMode: 'direct',
+  inviteRewardRebateMultiplier: 0,
+  inviteRewardRebateTrigger: 'first',
+  inviteRewardTransferMinDisplay: 0,
 }
 
 interface SystemConfigState {

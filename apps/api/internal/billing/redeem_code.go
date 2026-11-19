@@ -12,6 +12,21 @@ import (
 	"github.com/QuantumNous/new-api/internal/logger"
 )
 
+// GetRedemptionNames lists distinct redemption code names for the invite
+// reward source whitelist, without exposing code keys or pagination details.
+func GetRedemptionNames(c contract.Context) {
+	names, err := QueryRedemptionNames()
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	_ = c.JSON(http.StatusOK, common.H{
+		"success": true,
+		"message": "",
+		"data":    names,
+	})
+	return
+}
 func GetRedemption(c contract.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {

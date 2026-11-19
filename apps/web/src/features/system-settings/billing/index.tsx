@@ -35,6 +35,8 @@ const defaultBillingSettings: BillingSettings = {
   'invite_reward.rebate_trigger': 'first',
   'invite_reward.transfer_min_quota': 0,
   'invite_reward.transfer_min_quota_display': 0,
+  'invite_reward.recharge_sources': 'topup',
+  'invite_reward.redemption_code_names': '',
   TopUpLink: '',
   'general_setting.docs_link': '',
   'quota_setting.enable_free_model_pre_consume': true,

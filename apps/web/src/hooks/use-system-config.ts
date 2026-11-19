@@ -52,6 +52,10 @@ interface StatusApiResponse {
     amount_unit?: string
     inviter_reward_display?: number
     invitee_reward_display?: number
+    invite_reward_inviter_mode?: string
+    invite_reward_rebate_multiplier?: number
+    invite_reward_rebate_trigger?: string
+    invite_reward_transfer_min_quota_display?: number
     /** Raw pinned theme-panel row; empty when the operator has not pinned one. */
     theme_customization?: string
   }
@@ -100,6 +104,18 @@ export function mapStatusDataToConfig(
         : 'usd',
     inviterRewardDisplay: toNumber(data.inviter_reward_display, 0),
     inviteeRewardDisplay: toNumber(data.invitee_reward_display, 0),
+    inviteRewardMode:
+      data.invite_reward_inviter_mode === 'recharge' ? 'recharge' : 'direct',
+    inviteRewardRebateMultiplier: toNumber(
+      data.invite_reward_rebate_multiplier,
+      0
+    ),
+    inviteRewardRebateTrigger:
+      data.invite_reward_rebate_trigger === 'every' ? 'every' : 'first',
+    inviteRewardTransferMinDisplay: toNumber(
+      data.invite_reward_transfer_min_quota_display,
+      0
+    ),
   }
 
   return {

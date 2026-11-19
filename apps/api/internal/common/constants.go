@@ -147,11 +147,29 @@ const (
 	InviteRewardTriggerEvery = "every"
 )
 
+// InviteRewardRechargeSource* are the allowed values of
+// invite_reward.recharge_sources (comma separated). A recharge counts toward
+// the inviter recharge rebate only when its source is in that list.
+const (
+	InviteRewardRechargeSourceTopup        = "topup"        // 钱包充值（epay / vmq / codepay / creem / stripe）
+	InviteRewardRechargeSourceSubscription = "subscription" // 订阅购买（生成的 TopUp 无支付提供商）
+	InviteRewardRechargeSourceRedemption   = "redemption"   // 兑换码充值（需进一步匹配 redemption 白名单）
+)
+
 var (
 	InviteRewardInviterMode      = InviteRewardModeDirect   // how the inviter reward is granted
 	InviteRewardRebateMultiplier = 0.0                      // multiplier applied to the recharge quota for the inviter rebate
 	InviteRewardRebateTrigger    = InviteRewardTriggerFirst // first or every successful recharge
 	InviteRewardTransferMinQuota = 0                        // minimum affiliate quota transferable to balance
+	// InviteRewardRechargeSources lists which recharge sources count toward
+	// the inviter recharge rebate. Default "topup" keeps existing behavior:
+	// only wallet top-ups are eligible.
+	InviteRewardRechargeSources = InviteRewardRechargeSourceTopup
+	// InviteRewardRedemptionCodeNames is a comma-separated whitelist of
+	// redemption code names eligible for the recharge rebate (exact match,
+	// trimmed). An empty list means no redemption code counts as a recharge;
+	// admins must select at least one type.
+	InviteRewardRedemptionCodeNames = ""
 )
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
