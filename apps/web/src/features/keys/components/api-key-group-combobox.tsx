@@ -49,6 +49,7 @@ export type ApiKeyGroupOption = {
   label: string
   desc?: string
   modelCount?: number
+  ratio?: number
 }
 
 type ApiKeyGroupComboboxProps = {
