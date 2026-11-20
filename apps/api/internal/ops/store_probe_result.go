@@ -3,7 +3,7 @@ package ops
 import (
 	"context"
 
-	"github.com/QuantumNous/new-api/internal/catalog"
+	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/usage"
@@ -118,7 +118,7 @@ func LoadUpstreamHealth(ctx context.Context, startTs, endTs int64, groups []stri
 		return nil, nil
 	}
 
-	abilities := dbx.DB.Model(&catalog.Ability{}).
+	abilities := dbx.DB.Model(&channelpkg.Ability{}).
 		Select("DISTINCT channel_id, model").
 		Where("enabled = ?", true)
 	if groups != nil {
