@@ -23,6 +23,9 @@ import type {
   GeoipDatabaseStatusResponse,
   FetchUpstreamRatiosRequest,
   LogCleanupTask,
+  PriceFluctuationResponse,
+  PricingAnalysisRequest,
+  PricingAnalysisResponse,
   SystemOptionsResponse,
   SystemTaskListResponse,
   SystemTaskResponse,
@@ -104,6 +107,22 @@ export async function fetchUpstreamRatios(request: FetchUpstreamRatiosRequest) {
   const res = await api.post<UpstreamRatiosResponse>(
     '/api/ratio_sync/fetch',
     request
+  )
+  return res.data
+}
+
+export async function fetchPricingAnalysis(request: PricingAnalysisRequest) {
+  const res = await api.post<PricingAnalysisResponse>(
+    '/api/ratio_sync/analysis',
+    request
+  )
+  return res.data
+}
+
+export async function getPriceFluctuations(thresholdPct: number) {
+  const res = await api.get<PriceFluctuationResponse>(
+    '/api/ratio_sync/fluctuation',
+    { params: { threshold_pct: thresholdPct } }
   )
   return res.data
 }

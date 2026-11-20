@@ -633,3 +633,96 @@ export type UpstreamRatiosResponse = {
     test_results: TestResult[]
   }
 }
+
+// ---------------------------------------------------------------------------
+// Pricing analysis (ratio_sync/analysis)
+// ---------------------------------------------------------------------------
+
+export type PricingAnalysisChannelWindow = {
+  context: number
+  local: number | null
+  upstream: number | null
+  diff_pct: number | null
+  margin_pct: number | null
+  requests: number | null
+  cost: number | null
+  profit: number | null
+}
+
+export type PricingAnalysisChannel = {
+  channel_id: number
+  channel_name: string
+  channel_type: number
+  model_name: string
+  price_mode: string
+  billing_mode: string
+  requests: number
+  tokens: number
+  revenue: number
+  cost: number | null
+  profit: number | null
+  margin_pct: number | null
+  windows: PricingAnalysisChannelWindow[]
+}
+
+export type PricingAnalysisRow = {
+  alias: string
+  price_model: string
+  vendor_id: number
+  vendor_name: string
+  name_rule: number
+  matched_count: number
+  requests: number
+  tokens: number
+  revenue: number
+  cost: number | null
+  profit: number | null
+  margin_pct: number | null
+  channels: PricingAnalysisChannel[]
+}
+
+export type PricingAnalysisVendor = {
+  id: number
+  name: string
+}
+
+export type PricingAnalysisData = {
+  windows: number[]
+  vendors: PricingAnalysisVendor[]
+  rows: PricingAnalysisRow[]
+}
+
+export type PricingAnalysisResponse = {
+  success: boolean
+  message: string
+  data: PricingAnalysisData
+}
+
+export type PricingAnalysisRequest = {
+  upstreams: UpstreamConfig[]
+  timeout: number
+  vendor: number
+  start: number
+  end: number
+  windows: number[]
+}
+
+// ---------------------------------------------------------------------------
+// Price fluctuation (ratio_sync/fluctuation)
+// ---------------------------------------------------------------------------
+
+export type PriceFluctuationChange = {
+  source: string
+  model: string
+  field: string
+  old_value: unknown
+  new_value: unknown
+  change_pct: number | null
+  fetched_at: number
+}
+
+export type PriceFluctuationResponse = {
+  success: boolean
+  message: string
+  data: { changes: PriceFluctuationChange[] }
+}
