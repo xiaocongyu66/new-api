@@ -6,6 +6,7 @@ import (
 
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
