@@ -46,8 +46,8 @@ func TestMakeEventDedupeKeyDistinguishesAuthorsAndGroups(t *testing.T) {
 
 // 用户双击按钮时平台可能以不同 interaction id 推送两次同语义事件。
 func TestMakeEventDedupeKeyFingerprintsButtonDoubleClick(t *testing.T) {
-	click := `{"id":"b7b6889c-ee00-47a6-a2c8-159f3115da58","group_openid":"GRP_1","group_member_openid":"MEM_1","user_openid":"USER_A","data":{"resolved":{"button_data":"/签到","button_id":"nailao_checkin"}}}`
-	doubleClick := `{"id":"f07c1de0-c504-4153-91ff-6edb3831e152","group_openid":"GRP_1","group_member_openid":"MEM_1","user_openid":"USER_A","data":{"resolved":{"button_data":"/签到","button_id":"nailao_checkin"}}}`
+	click := `{"id":"b7b6889c-ee00-47a6-a2c8-159f3115da58","group_openid":"GRP_1","group_member_openid":"MEM_1","user_openid":"USER_A","data":{"resolved":{"button_data":"/签到","button_id":"qqbot_checkin"}}}`
+	doubleClick := `{"id":"f07c1de0-c504-4153-91ff-6edb3831e152","group_openid":"GRP_1","group_member_openid":"MEM_1","user_openid":"USER_A","data":{"resolved":{"button_data":"/签到","button_id":"qqbot_checkin"}}}`
 
 	first := makeEventDedupeKey("INTERACTION_CREATE", "uuid-1", []byte(click))
 	second := makeEventDedupeKey("INTERACTION_CREATE", "uuid-2", []byte(doubleClick))

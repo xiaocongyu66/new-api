@@ -178,5 +178,5 @@ func checkinDisabledReply(openID string) string {
 		return buildPlainMarkdown(openID, "**本群已关闭签到**\n\n请到其他群签到")
 	}
 	return buildPlainMarkdown(openID,
-		"**本群已关闭签到**\n\n请前往 https://nailao.biz 个人资料→每日签到 领取，或到其他群签到")
+		"**本群已关闭签到**\n\n请前往个人资料→每日签到 领取，或到其他群签到")
 }
