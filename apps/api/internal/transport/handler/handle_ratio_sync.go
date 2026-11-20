@@ -12,3 +12,11 @@ func FetchUpstreamRatios(c contract.Context) {
 func GetSyncableChannels(c contract.Context) {
 	ops.GetSyncableChannels(c)
 }
+
+func PricingAnalysis(c contract.Context) {
+	ops.PricingAnalysis(c)
+}
+
+func PriceFluctuation(c contract.Context) {
+	ops.PriceFluctuation(c)
+}

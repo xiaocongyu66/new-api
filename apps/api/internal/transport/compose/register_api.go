@@ -363,6 +363,8 @@ func SetApiRouter(router contract.Engine) {
 		{
 			ratioSyncRoute.GET("/channels", handler.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", handler.FetchUpstreamRatios)
+			ratioSyncRoute.POST("/analysis", handler.PricingAnalysis)
+			ratioSyncRoute.GET("/fluctuation", handler.PriceFluctuation)
 		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
