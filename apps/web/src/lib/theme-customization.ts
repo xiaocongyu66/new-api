@@ -38,15 +38,6 @@ export const THEME_PRESETS = [
     swatches: ['oklch(0.984 0.005 95)', 'oklch(0.685 0.142 38)'],
   },
   {
-    // Warm Gold brand palette: warm cream canvas with warm-gold
-    // as the single accent and toasted-crust orange in the chart slots.
-    // Surfaces derive from `--primary` via the semantic bridge below, so this
-    // preset only declares the canvas, ink and accent anchors.
-    value: 'nailao',
-    name: 'Warm Gold',
-    swatches: ['oklch(0.967 0.03 95)', 'oklch(0.84 0.14 85)'],
-  },
-  {
     value: 'simple-large',
     name: 'Simple Large-font',
     swatches: ['oklch(0.15 0 0)', 'oklch(0.99 0 0)'],
