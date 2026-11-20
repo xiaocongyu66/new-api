@@ -62,6 +62,22 @@ function formatHour(ts: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:00`
 }
 
+// A latency bar is drawn only from a real measurement: a missing latency is
+// an honest gap, never a fabricated 0 ms reading.
+function hasLatency(
+  point: ModelPerfTrendPoint
+): point is ModelPerfTrendPoint & { latency_ms: number } {
+  return point.latency_ms != null && Number.isFinite(point.latency_ms)
+}
+
+// A success-rate point is plotted whenever the rate was measured, even when
+// the hour had no latency sample: a null latency is not a missing rate.
+function hasRate(
+  point: ModelPerfTrendPoint
+): point is ModelPerfTrendPoint & { success_rate: number } {
+  return point.success_rate != null && Number.isFinite(point.success_rate)
+}
+
 // Mantissa steps for axis rounding, in ascending order.
 const NICE_STEPS = [1, 2, 2.5, 5, 10]
 
@@ -72,6 +88,46 @@ function niceCeil(value: number): number {
   const normalized = value / magnitude
   const step = NICE_STEPS.find((candidate) => normalized <= candidate) ?? 10
   return step * magnitude
+}
+
+// Compact source label reusing existing translations; combined sources name
+// both contributors so an upstream estimate is never mistaken for a counted
+// probe. `No data` covers an empty hour.
+function sourceLabel(
+  source: ModelPerfTrendPoint['source'] | undefined,
+  t: (key: string) => string
+): string | null {
+  switch (source) {
+    case 'request':
+      return t('Request')
+    case 'request+probe':
+      return `${t('Request')} + ${t('Probe')}`
+    case 'probe':
+      return t('Probe')
+    case 'probe+upstream':
+      return `${t('Probe')} + ${t('Upstream')}`
+    case 'upstream':
+      return t('Upstream')
+    case 'none':
+      return t('No data')
+    default:
+      return null
+  }
+}
+
+// Compact source tag shown on an active or idle hour; `title` carries the
+// full label for combined sources. Plain request traffic needs no tag.
+function sourceTag(
+  source: ModelPerfTrendPoint['source'] | undefined,
+  t: (key: string) => string
+) {
+  const label = sourceLabel(source, t)
+  if (!label || source === 'request') return null
+  return (
+    <span className='text-muted-foreground/60 text-[9px]' title={label}>
+      {label}
+    </span>
+  )
 }
 /**
  * Mini combo chart for a model-square card: blue latency bars against the
@@ -91,22 +147,22 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
   const { perf } = props
 
   const series = useMemo<ModelPerfTrendPoint[]>(
-    () =>
-      (perf?.recent_series ?? [])
-        .filter(
-          (point) =>
-            Number.isFinite(point.latency_ms) &&
-            Number.isFinite(point.success_rate)
-        )
-        .slice(-24),
+    () => (perf?.recent_series ?? []).slice(-24),
     [perf]
   )
 
   const geometry = useMemo(() => {
     if (series.length < 2) return null
 
-    const latencies = series.map((point) => point.latency_ms)
-    const peakLatency = Math.max(...latencies)
+    const ratePoints = series.filter(hasRate)
+    const latencySamples = series.flatMap((point, index) =>
+      hasLatency(point) ? [{ point, index }] : []
+    )
+    if (ratePoints.length === 0 && latencySamples.length === 0) return null
+
+    const latencies = latencySamples.map(({ point }) => point.latency_ms)
+    const peakLatency =
+      latencies.length > 0 ? Math.max(...latencies) : 0
     const latencyMax = niceCeil(peakLatency)
     const latencyTicks = [0, latencyMax / 2, latencyMax]
     // A chat request routinely takes whole seconds, so a card whose measured
@@ -122,6 +178,8 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
     // chart, making a 60% hour hug the baseline and read like a failure.
     const successTicks = [0, 50, 100]
 
+    // X positions come from every slot, so an unsampled hour still occupies
+    // its real place on the timeline instead of compressing the other hours.
     const xAt = (index: number) =>
       PAD_L + (PLOT_W * index) / (series.length - 1)
     const yLatency = (value: number) =>
@@ -132,7 +190,7 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
     // 24 hourly points leave ~14 units per band; keep bars readable with a
     // floor instead of letting them vanish.
     const barWidth = Math.max(4, Math.min(16, band * 0.6))
-    const bars = series.map((point, index) => ({
+    const bars = latencySamples.map(({ point, index }) => ({
       index,
       x: xAt(index) - barWidth / 2,
       y: yLatency(point.latency_ms),
@@ -140,12 +198,24 @@ export const ModelCardMetrics = memo(function ModelCardMetrics(props: {
       height: Math.max(1, BASE_Y - yLatency(point.latency_ms)),
     }))
 
-    const linePath = smoothLinePath(
-      series.map((point, index) => ({
-        x: xAt(index),
-        y: ySuccess(point.success_rate),
-      }))
-    )
+    // Break the line at hours with no rate; connecting across a gap would
+    // draw a success rate nobody measured. A missing latency does not break
+    // the line: an upstream rate is a real rate even without a latency
+    // measurement for that hour.
+    const runs: { x: number; y: number }[][] = []
+    let run: { x: number; y: number }[] = []
+    series.forEach((point, index) => {
+      if (!hasRate(point)) {
+        if (run.length > 0) {
+          runs.push(run)
+          run = []
+        }
+        return
+      }
+      run.push({ x: xAt(index), y: ySuccess(point.success_rate) })
+    })
+    if (run.length > 0) runs.push(run)
+    const linePath = runs.map((segment) => smoothLinePath(segment)).join(' ')
 
     // Label at most four hours; always keep the newest one when it clears the
     // previous label by a full step.
@@ -204,6 +274,8 @@ const MetricHeadline = memo(function MetricHeadline(props: {
   latencyWidth: string
   latencyUnit: LatencyUnit
   activePoint: ModelPerfTrendPoint | null
+  /** Source of the idle summary, shown when no hour is active. */
+  idleSource: ModelPerfTrendPoint['source']
   t: (key: string) => string
 }) {
   const {
@@ -212,6 +284,7 @@ const MetricHeadline = memo(function MetricHeadline(props: {
     latencyWidth,
     latencyUnit,
     activePoint,
+    idleSource,
     t,
   } = props
 
@@ -224,19 +297,25 @@ const MetricHeadline = memo(function MetricHeadline(props: {
             <span className='invisible'>{latencyWidth}</span>
             <span className='absolute inset-0 text-right'>{latencyText}</span>
           </span>
-          <span className='text-muted-foreground/70 text-[10px]'>
-            {latencyUnit}
-          </span>
+          {latencyText !== '—' && (
+            <span className='text-muted-foreground/70 text-[10px]'>
+              {latencyUnit}
+            </span>
+          )}
         </span>
       </span>
       <span className='flex min-w-0 items-baseline justify-center gap-1'>
         {activePoint ? (
-          <span className='bg-foreground/10 text-foreground/80 rounded px-1 font-mono'>
-            {formatHour(activePoint.ts)}
+          <span className='flex items-center gap-1'>
+            <span className='bg-foreground/10 text-foreground/80 rounded px-1 font-mono'>
+              {formatHour(activePoint.ts)}
+            </span>
+            {sourceTag(activePoint.source, t)}
           </span>
         ) : (
           <span className='text-muted-foreground/40 font-mono'>—</span>
         )}
+        {!activePoint && sourceTag(idleSource, t)}
       </span>
       <span className='flex min-w-0 items-baseline justify-end gap-1'>
         <span className='text-muted-foreground/55'>{t('Success rate')}</span>
@@ -245,7 +324,9 @@ const MetricHeadline = memo(function MetricHeadline(props: {
             <span className='invisible'>100.0</span>
             <span className='absolute inset-0 text-right'>{successText}</span>
           </span>
-          <span className='text-muted-foreground/70 text-[10px]'>%</span>
+          {successText !== '—' && (
+            <span className='text-muted-foreground/70 text-[10px]'>%</span>
+          )}
         </span>
       </span>
     </div>
@@ -423,23 +504,25 @@ const MetricChart = memo(function MetricChart(props: {
         strokeLinejoin='round'
         vectorEffect='non-scaling-stroke'
       />
-      {series.map((point, index) => (
-        <circle
-          key={`dot-${point.ts}`}
-          className='card-chart-dot'
-          cx={geometry.xAt(index)}
-          cy={geometry.ySuccess(point.success_rate)}
-          r={active === index ? 3.2 : 2}
-          fill={SUCCESS_COLOR}
-          stroke='white'
-          strokeWidth={1}
-          vectorEffect='non-scaling-stroke'
-          style={{
-            animationDelay: `${420 + index * 12}ms`,
-            transition: 'r 140ms ease',
-          }}
-        />
-      ))}
+      {series.map((point, index) =>
+        hasRate(point) ? (
+          <circle
+            key={`dot-${point.ts}`}
+            className='card-chart-dot'
+            cx={geometry.xAt(index)}
+            cy={geometry.ySuccess(point.success_rate)}
+            r={active === index ? 3.2 : 2}
+            fill={SUCCESS_COLOR}
+            stroke='white'
+            strokeWidth={1}
+            vectorEffect='non-scaling-stroke'
+            style={{
+              animationDelay: `${420 + index * 12}ms`,
+              transition: 'r 140ms ease',
+            }}
+          />
+        ) : null
+      )}
 
       {/* Active-hour guide */}
       {active != null && (
@@ -535,22 +618,32 @@ function MetricRows(props: {
   // never from the live value: latency reserves the widest y-axis tick and the
   // success rate always reserves "100.0", so the units and the neighbouring
   // labels never move mid-animation.
-  const latencyText = useCountUpText(
-    activePoint
-      ? formatLatencyValue(activePoint.latency_ms, geometry.latencyUnit)
-      : formatLatencyValue(perf.avg_latency_ms, geometry.latencyUnit),
-    props.visible
-  )
+  // A null summary/active latency is a gap ('—'), not a healthy 0 ms; the
+  // unit is hidden next to a gap by MetricHeadline.
+  const summaryLatency = perf.avg_latency_ms
+  let latencyValue =
+    summaryLatency != null && Number.isFinite(summaryLatency)
+      ? formatLatencyValue(summaryLatency, geometry.latencyUnit)
+      : '—'
+  if (activePoint != null) {
+    const latency = activePoint.latency_ms
+    latencyValue =
+      latency != null && Number.isFinite(latency)
+        ? formatLatencyValue(latency, geometry.latencyUnit)
+        : '—'
+  }
+  let successValue = perf.success_rate.toFixed(1)
+  if (activePoint != null) {
+    const rate = activePoint.success_rate
+    successValue =
+      rate != null && Number.isFinite(rate) ? rate.toFixed(1) : '—'
+  }
+  const latencyText = useCountUpText(latencyValue, props.visible)
   const latencyWidth = formatLatencyValue(
     geometry.latencyTicks[2],
     geometry.latencyUnit
   )
-  const successText = useCountUpText(
-    activePoint
-      ? activePoint.success_rate.toFixed(1)
-      : perf.success_rate.toFixed(1),
-    props.visible
-  )
+  const successText = useCountUpText(successValue, props.visible)
   return (
     <div className={cn('border-t pt-3', props.className)}>
       {/* Headline numbers: window averages, or the hovered/clicked hour.
@@ -564,6 +657,7 @@ function MetricRows(props: {
         latencyUnit={geometry.latencyUnit}
         activePoint={activePoint}
         t={t}
+        idleSource={perf.source}
       />
 
       <MetricChart

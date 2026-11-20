@@ -43,13 +43,34 @@ export type PerformanceMetricsData = {
   }
 }
 
+export type PerfDataSource =
+  | 'request'
+  | 'request+probe'
+  | 'probe'
+  | 'probe+upstream'
+  | 'upstream'
+  | 'none'
+
+export type PerfModelRecentPoint = {
+  ts: number
+  latency_ms: number | null
+  success_rate: number | null
+  source?: PerfDataSource
+}
+
 export type PerfModelSummary = {
   model_name: string
-  avg_latency_ms: number
+  avg_latency_ms: number | null
   success_rate: number
   avg_tps: number
   recent_success_rates?: number[]
+  recent_series?: PerfModelRecentPoint[]
   request_count?: number
+  /**
+   * Additive source of the summary rate: real requests, counted probes, and/or
+   * upstream health estimates. The summary never reports 'none'.
+   */
+  source?: Exclude<PerfDataSource, 'none'>
 }
 
 export type PerfSummaryAllData = {
