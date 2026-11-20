@@ -6,7 +6,7 @@ import (
 
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,6 +16,7 @@ import (
 func withProbeDB(t *testing.T) {
 	t.Helper()
 	previousDB := dbx.DB
+	dbinfra.InitDialectColumns()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&channelpkg.Ability{}, &channelpkg.Channel{}, &ChannelProbeResult{}))
