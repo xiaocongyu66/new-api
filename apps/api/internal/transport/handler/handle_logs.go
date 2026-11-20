@@ -1,12 +1,15 @@
 package handler
 
 import (
-	"github.com/QuantumNous/new-api/internal/usage"
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/ops"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"github.com/QuantumNous/new-api/internal/usage"
 
 	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/samber/lo"
@@ -257,7 +260,21 @@ func GetPerfMetricsSummary(c contract.Context) {
 	}
 
 	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
-	result, err := usage.QuerySummaryAll(hours, activeGroups)
+	// Probe data is supplementary: a missing probe table must not take down
+	// the public model-square endpoint.
+	endTs := time.Now().Unix()
+	startTs := endTs - int64(hours)*3600
+	probeBuckets, err := ops.LoadProbeBuckets(startTs, endTs, usage.GetBucketSeconds())
+	if err != nil {
+		common.SysError("load probe buckets for perf summary: " + err.Error())
+		probeBuckets = nil
+	}
+	upstreamPoints, err := ops.LoadUpstreamHealth(context.Background(), startTs, endTs, activeGroups)
+	if err != nil {
+		common.SysError("load upstream health for perf summary: " + err.Error())
+		upstreamPoints = nil
+	}
+	result, err := usage.QuerySummaryAll(hours, activeGroups, probeBuckets, upstreamPoints)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{
 			"success": false,

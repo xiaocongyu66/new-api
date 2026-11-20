@@ -190,3 +190,121 @@ describe('model-square card success-rate axis', () => {
     expect(cys).toEqual([82, 45, 8])
   })
 })
+
+describe('model-square card probe fallback', () => {
+  // A quiet hour must not become a fabricated 100% / 0 ms sample. Probe
+  // results fill it with a real upstream check, and hours with neither source
+  // stay empty so the line breaks instead of interpolating a made-up rate.
+  test('probe hours are drawn and unsampled hours are gaps', async () => {
+    const perf: ModelPerfBadgeData = {
+      avg_latency_ms: 400,
+      success_rate: 90,
+      avg_tps: 42,
+      recent_series: [
+        { ts: 1_700_000_000, latency_ms: 250, success_rate: 60, source: 'probe' },
+        { ts: 1_700_003_600, latency_ms: null, success_rate: null, source: 'none' },
+        { ts: 1_700_007_200, latency_ms: 400, success_rate: 90, source: 'request' },
+      ],
+    }
+    const host = renderCard(perf)
+
+    expect(host.querySelectorAll('svg circle')).toHaveLength(2)
+    expect(host.querySelectorAll('rect.card-chart-bar')).toHaveLength(2)
+    const path = host.querySelector('path.card-chart-line')?.getAttribute('d') ?? ''
+    expect((path.match(/M/g) ?? []).length).toBe(2)
+
+    const chart = host.querySelector<SVGSVGElement>('svg[viewBox="0 0 400 96"]')
+    expect(chart).not.toBeNull()
+    chart!.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 400,
+        bottom: 96,
+        width: 400,
+        height: 96,
+        toJSON: () => ({}),
+      }) as DOMRect
+
+    const clickAt = async (clientX: number) => {
+      await act(async () => {
+        chart!.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, clientX, clientY: 48 })
+        )
+      })
+    }
+
+    await clickAt(40)
+    expect(host.textContent).toContain('Probe')
+
+    await clickAt(201)
+    expect(host.textContent).toContain('—')
+  })
+})
+
+describe('model-square card upstream rate without latency', () => {
+  // The old gap guard required latency and rate together, so an upstream
+  // health estimate with no latency sample silently lost its rate. The rate
+  // must still be plotted; only the latency bar stays a gap.
+  test('an upstream rate is plotted while its latency is a gap', async () => {
+    const perf: ModelPerfBadgeData = {
+      avg_latency_ms: null,
+      success_rate: 80,
+      avg_tps: 42,
+      source: 'upstream',
+      recent_series: [
+        { ts: 1_700_000_000, latency_ms: 250, success_rate: 60, source: 'request' },
+        { ts: 1_700_003_600, latency_ms: null, success_rate: 85, source: 'upstream' },
+        { ts: 1_700_007_200, latency_ms: null, success_rate: null, source: 'none' },
+        { ts: 1_700_010_800, latency_ms: 400, success_rate: 90, source: 'request' },
+      ],
+    }
+    const host = renderCard(perf)
+
+    // Three measured rates, but only two latencies: the upstream hour draws a
+    // dot and no bar. The path breaks at the empty hour instead of joining
+    // 85% to 90% across a sample nobody measured.
+    expect(host.querySelectorAll('svg circle')).toHaveLength(3)
+    expect(host.querySelectorAll('rect.card-chart-bar')).toHaveLength(2)
+    const path = host.querySelector('path.card-chart-line')?.getAttribute('d') ?? ''
+    expect((path.match(/M/g) ?? []).length).toBe(2)
+
+    const headline = host.querySelector<HTMLElement>('div.grid-cols-3')!
+    // Idle summary: no latency to show and the estimate is labelled upstream.
+    expect(headline.textContent).toContain('Upstream')
+    expect(headline.textContent).not.toContain('ms')
+
+    const chart = host.querySelector<SVGSVGElement>('svg[viewBox="0 0 400 96"]')!
+    chart.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 400,
+        bottom: 96,
+        width: 400,
+        height: 96,
+        toJSON: () => ({}),
+      }) as DOMRect
+
+    const pinAt = async (clientX: number) => {
+      await act(async () => {
+        chart.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, clientX, clientY: 48 })
+        )
+      })
+    }
+
+    await pinAt(147)
+    expect(headline.textContent).toContain('Upstream')
+
+    await pinAt(255)
+    // A gap shows '—' for both metrics and prints no unit beside either.
+    expect(headline.textContent).toContain('No data')
+    expect(headline.textContent).not.toContain('ms')
+    expect(headline.textContent).not.toContain('%')
+  })
+})
