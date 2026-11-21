@@ -331,6 +331,8 @@ export type BillingSettings = {
   'invite_reward.rebate_trigger': 'first' | 'every'
   'invite_reward.transfer_min_quota': number
   'invite_reward.transfer_min_quota_display': number
+  'invite_reward.recharge_sources': string
+  'invite_reward.redemption_code_names': string
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
@@ -630,4 +632,97 @@ export type UpstreamRatiosResponse = {
     differences: DifferencesMap
     test_results: TestResult[]
   }
+}
+
+// ---------------------------------------------------------------------------
+// Pricing analysis (ratio_sync/analysis)
+// ---------------------------------------------------------------------------
+
+export type PricingAnalysisChannelWindow = {
+  context: number
+  local: number | null
+  upstream: number | null
+  diff_pct: number | null
+  margin_pct: number | null
+  requests: number | null
+  cost: number | null
+  profit: number | null
+}
+
+export type PricingAnalysisChannel = {
+  channel_id: number
+  channel_name: string
+  channel_type: number
+  model_name: string
+  price_mode: string
+  billing_mode: string
+  requests: number
+  tokens: number
+  revenue: number
+  cost: number | null
+  profit: number | null
+  margin_pct: number | null
+  windows: PricingAnalysisChannelWindow[]
+}
+
+export type PricingAnalysisRow = {
+  alias: string
+  price_model: string
+  vendor_id: number
+  vendor_name: string
+  name_rule: number
+  matched_count: number
+  requests: number
+  tokens: number
+  revenue: number
+  cost: number | null
+  profit: number | null
+  margin_pct: number | null
+  channels: PricingAnalysisChannel[]
+}
+
+export type PricingAnalysisVendor = {
+  id: number
+  name: string
+}
+
+export type PricingAnalysisData = {
+  windows: number[]
+  vendors: PricingAnalysisVendor[]
+  rows: PricingAnalysisRow[]
+}
+
+export type PricingAnalysisResponse = {
+  success: boolean
+  message: string
+  data: PricingAnalysisData
+}
+
+export type PricingAnalysisRequest = {
+  upstreams: UpstreamConfig[]
+  timeout: number
+  vendor: number
+  start: number
+  end: number
+  windows: number[]
+}
+
+// ---------------------------------------------------------------------------
+// Price fluctuation (ratio_sync/fluctuation)
+// ---------------------------------------------------------------------------
+
+export type PriceFluctuationChange = {
+  source: string
+  model: string
+  field: string
+  old_value: unknown
+  new_value: unknown
+  change_pct: number | null
+  fetched_at: number
+}
+
+export type PriceFluctuationResponse = {
+  success: boolean
+  message: string
+  data: { changes: PriceFluctuationChange[] }
 }

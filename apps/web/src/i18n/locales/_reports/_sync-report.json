@@ -1,39 +1,39 @@
 {
-  "base": "zh.json",
+  "base": "en.json",
   "locales": {
     "en": {
       "file": "en.json",
-      "missingCount": 46,
+      "missingCount": 0,
       "extrasCount": 0,
       "untranslatedCount": 0
     },
     "fr": {
       "file": "fr.json",
-      "missingCount": 46,
+      "missingCount": 16,
       "extrasCount": 0,
-      "untranslatedCount": 20
+      "untranslatedCount": 23
     },
     "ja": {
       "file": "ja.json",
-      "missingCount": 46,
+      "missingCount": 16,
       "extrasCount": 0,
-      "untranslatedCount": 60
+      "untranslatedCount": 81
     },
     "ru": {
       "file": "ru.json",
-      "missingCount": 46,
+      "missingCount": 16,
       "extrasCount": 0,
-      "untranslatedCount": 60
+      "untranslatedCount": 81
     },
     "vi": {
       "file": "vi.json",
-      "missingCount": 46,
+      "missingCount": 16,
       "extrasCount": 0,
-      "untranslatedCount": 20
+      "untranslatedCount": 23
     },
     "zh-TW": {
       "file": "zh-TW.json",
-      "missingCount": 46,
+      "missingCount": 0,
       "extrasCount": 0,
       "untranslatedCount": 0
     },
@@ -41,7 +41,7 @@
       "file": "zh.json",
       "missingCount": 0,
       "extrasCount": 0,
-      "untranslatedCount": 0
+      "untranslatedCount": 20
     }
   }
 }

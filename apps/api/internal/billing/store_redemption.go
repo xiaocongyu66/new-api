@@ -115,7 +115,15 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return identity.UserQuery(tx).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
+		if err := identity.UserQuery(tx).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error; err != nil {
+			return err
+		}
+		if redemption.Quota > 0 {
+			if err := applyInviteRechargeRewards(tx, userId, redemption.Quota, common.InviteRewardRechargeSourceRedemption, redemption.Name); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())
@@ -133,6 +141,45 @@ func GetRedemptionById(id int) (*Redemption, error) {
 	var err error = nil
 	err = dbx.DB.First(&redemption, "id = ?", id).Error
 	return &redemption, err
+}
+
+// RedemptionNameGroup is one aggregated redemption-code type shown in the
+// invite-reward scope picker.
+type RedemptionNameGroup struct {
+	Name              string  `json:"name"`
+	Count             int64   `json:"count"`
+	TotalQuota        int64   `json:"total_quota"`
+	TotalQuotaDisplay float64 `json:"total_quota_display"`
+}
+
+// QueryRedemptionNames groups redemption codes by name so the admin UI can
+// show a descriptive label (how many codes and their total value) instead of
+// paginating every code.
+func QueryRedemptionNames() ([]RedemptionNameGroup, error) {
+	var rows []struct {
+		Name       string
+		Count      int64
+		TotalQuota int64
+	}
+	err := dbx.DB.Model(&Redemption{}).
+		Select("name, COUNT(*) AS count, SUM(quota) AS total_quota").
+		Where("deleted_at IS NULL").
+		Group("name").
+		Order("name").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	groups := make([]RedemptionNameGroup, 0, len(rows))
+	for _, row := range rows {
+		groups = append(groups, RedemptionNameGroup{
+			Name:              row.Name,
+			Count:             row.Count,
+			TotalQuota:        row.TotalQuota,
+			TotalQuotaDisplay: QuotaToDisplayAmount(int(row.TotalQuota)),
+		})
+	}
+	return groups, nil
 }
 func QueryRedemptions(keyword string, status string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
 	tx := dbx.DB.Begin()

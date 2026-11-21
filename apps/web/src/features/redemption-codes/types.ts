@@ -65,6 +65,13 @@ export interface GetRedemptionsResponse {
   }
 }
 
+export interface RedemptionNameGroup {
+  name: string
+  count: number
+  total_quota: number
+  total_quota_display: number
+}
+
 export interface SearchRedemptionsParams {
   keyword?: string
   status?: string

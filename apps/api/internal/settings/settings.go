@@ -165,6 +165,25 @@ func ValidateOptionValue(key string, value string) error {
 				return fmt.Errorf("%s must be a non-negative integer", key)
 			}
 			return nil
+		case "invite_reward.recharge_sources":
+			// Comma separated source names; every non-empty token must be one
+			// of the three supported recharge sources.
+			for _, source := range strings.Split(value, ",") {
+				source = strings.TrimSpace(source)
+				if source == "" {
+					continue
+				}
+				if source != common.InviteRewardRechargeSourceTopup &&
+					source != common.InviteRewardRechargeSourceSubscription &&
+					source != common.InviteRewardRechargeSourceRedemption {
+					return fmt.Errorf("%s contains unknown source %q", key, source)
+				}
+			}
+			return nil
+		case "invite_reward.redemption_code_names":
+			// Comma separated exact code names; names are trimmed at use time,
+			// so no format restriction beyond being a plain string here.
+			return nil
 		}
 	}
 	if key == "ResponseCacheTtlSeconds" || key == "ResponseCacheMaxEntries" || key == "ResponseCacheMaxBodySize" {
@@ -300,6 +319,8 @@ wallhaven|https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&p
 	common.OptionMap["invite_reward.rebate_multiplier"] = strconv.FormatFloat(common.InviteRewardRebateMultiplier, 'f', -1, 64)
 	common.OptionMap["invite_reward.rebate_trigger"] = common.InviteRewardRebateTrigger
 	common.OptionMap["invite_reward.transfer_min_quota"] = strconv.Itoa(common.InviteRewardTransferMinQuota)
+	common.OptionMap["invite_reward.recharge_sources"] = common.InviteRewardRechargeSources
+	common.OptionMap["invite_reward.redemption_code_names"] = common.InviteRewardRedemptionCodeNames
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(rate_limit.ModelRequestRateLimitCount)
@@ -667,6 +688,10 @@ func ApplyOption(key string, value string) (err error) {
 			break
 		}
 		common.InviteRewardTransferMinQuota = n
+	case "invite_reward.recharge_sources":
+		common.InviteRewardRechargeSources = value
+	case "invite_reward.redemption_code_names":
+		common.InviteRewardRedemptionCodeNames = value
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
