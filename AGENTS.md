@@ -97,7 +97,7 @@ The stack defaults to Podman (`deploy/podman-dev/compose.yml`). Switch to Docker
 the whole recipe group. The Podman path needs a rootless socket:
 `systemctl --user enable --now podman.socket`.
 
-**`just dev-wt-dev` — recommended for agent/worktree development, auto-login ON.** It runs
+**`just dev-wt-dev` — the default way to start a dev environment; auto-login ON.** It runs
 `just dev-db` (dev PostgreSQL container only; Redis is expected on `localhost:6379`), builds and
 runs the Go API from the current worktree's `apps/api/` with the `dev` tag and `DEV_AUTO_LOGIN=1`
 (branch-scoped binary cache in `~/.cache/new-api-bin/new-api-<branch>-dev`), then starts the Rsbuild
@@ -105,10 +105,12 @@ HMR dev server (auto-proxying `/api`, `/mj`, `/pg` → the API port). The browse
 the throw-away `dev-auto-login` root account. Frontend changes hot-reload instantly; only Go changes
 need a restart. Pick your own high port — see **Ports** below.
 
-**`just dev-wt` — real login flows only.** Same as above without the `dev` tag, so
-`/api/user/dev/auto-login` does not exist and the app starts unauthenticated. Use it for
-auth/login/permission work. Disable dev auto-login without restarting by opening the app with
-`?dev-login=off`.
+**Any dev environment you start MUST use this auto-login path.** That means the `dev` build tag AND
+`DEV_AUTO_LOGIN=1` — `just dev-wt-dev` sets both for you. Starting the API any other way (plain
+`go run`, a `dev` binary without the env var, the `just dev-api` container) leaves the app
+unauthenticated and every check silently lands on the sign-in page; that is a defect, not a
+precondition to work around. `just dev-wt` (real login flows only) is the single exception, and only
+when the task is explicitly about auth, login, or permission gating.
 
 **`just dev-api` — API container, single worktree.** Starts postgres + redis + the API container;
 the container name `new-api-dev` is global, so only one worktree can use it. Pair it with an HMR
