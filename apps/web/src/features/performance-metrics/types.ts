@@ -45,9 +45,7 @@ export type PerformanceMetricsData = {
 
 export type PerfDataSource =
   | 'request'
-  | 'request+probe'
-  | 'probe'
-  | 'probe+upstream'
+  | 'request+upstream'
   | 'upstream'
   | 'none'
 
@@ -67,8 +65,8 @@ export type PerfModelSummary = {
   recent_series?: PerfModelRecentPoint[]
   request_count?: number
   /**
-   * Additive source of the summary rate: real requests, counted probes, and/or
-   * upstream health estimates. The summary never reports 'none'.
+   * Additive source of the summary rate: real requests and/or weighted upstream
+   * health estimates. The summary never reports 'none'.
    */
   source?: Exclude<PerfDataSource, 'none'>
 }

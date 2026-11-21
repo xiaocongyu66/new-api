@@ -80,6 +80,19 @@ type probeOutcome struct {
 	ErrorCode string
 }
 
+// probeErrorCode clips a free-form error message to the column width.
+//
+// The slice must be rune-aware: cutting a multi-byte character in half leaves
+// invalid UTF-8, which PostgreSQL rejects outright (SQLSTATE 22021) and the
+// whole probe row is lost. Non-UTF-8 bytes are dropped for the same reason.
+func probeErrorCode(content string) string {
+	s := strings.ToValidUTF8(content, "")
+	if r := []rune(s); len(r) > probeErrorCodeMaxLen {
+		s = string(r[:probeErrorCodeMaxLen])
+	}
+	return s
+}
+
 // latestProbeOutcomes collapses log rows (newest first) into one outcome per
 // (channel, model). The newest row decides: a request that failed and was then
 // retried successfully ends with a consume row, so the unit reads as usable —
@@ -104,11 +117,7 @@ func latestProbeOutcomes(rows []probeLogRow) map[probeUnitKey]probeOutcome {
 			}
 			continue
 		}
-		code := row.Content
-		if len(code) > probeErrorCodeMaxLen {
-			code = code[:probeErrorCodeMaxLen]
-		}
-		out[key] = probeOutcome{Success: false, ErrorCode: code}
+		out[key] = probeOutcome{Success: false, ErrorCode: probeErrorCode(row.Content)}
 	}
 	return out
 }

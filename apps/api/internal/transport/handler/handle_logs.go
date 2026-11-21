@@ -260,21 +260,16 @@ func GetPerfMetricsSummary(c contract.Context) {
 	}
 
 	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
-	// Probe data is supplementary: a missing probe table must not take down
-	// the public model-square endpoint.
+	// The card rate is upstream health blended with real requests; probe
+	// buckets are gone because probe requests were removed.
 	endTs := time.Now().Unix()
 	startTs := endTs - int64(hours)*3600
-	probeBuckets, err := ops.LoadProbeBuckets(startTs, endTs, usage.GetBucketSeconds())
-	if err != nil {
-		common.SysError("load probe buckets for perf summary: " + err.Error())
-		probeBuckets = nil
-	}
 	upstreamPoints, err := ops.LoadUpstreamHealth(context.Background(), startTs, endTs, activeGroups)
 	if err != nil {
 		common.SysError("load upstream health for perf summary: " + err.Error())
 		upstreamPoints = nil
 	}
-	result, err := usage.QuerySummaryAll(hours, activeGroups, probeBuckets, upstreamPoints)
+	result, err := usage.QuerySummaryAll(hours, activeGroups, upstreamPoints)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{
 			"success": false,

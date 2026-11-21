@@ -5,7 +5,9 @@ package handler
 // consume 日志、失败是 error 日志。历史成功不能掩盖刚刚发生的失败。
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"github.com/stretchr/testify/assert"
@@ -53,4 +55,17 @@ func TestLatestProbeOutcomes(t *testing.T) {
 		})
 		assert.Empty(t, out)
 	})
+}
+
+// 回归：错误信息按字节硬切会留下非法 UTF-8，PostgreSQL 直接拒收整行
+// (SQLSTATE 22021)，探活结果因此静默丢失。截断必须按 rune 走。
+func TestProbeErrorCodeKeepsValidUTF8(t *testing.T) {
+	long := strings.Repeat("错", 100) // 3 bytes each, 300 bytes
+	got := probeErrorCode(long)
+	assert.True(t, utf8.ValidString(got), "truncated error code must stay valid UTF-8")
+	assert.LessOrEqual(t, len([]rune(got)), probeErrorCodeMaxLen)
+
+	assert.Equal(t, "boom", probeErrorCode("boom"))
+	assert.Equal(t, "", probeErrorCode(""))
+	assert.Equal(t, "ok", probeErrorCode("ok\xff"), "invalid bytes are dropped")
 }
