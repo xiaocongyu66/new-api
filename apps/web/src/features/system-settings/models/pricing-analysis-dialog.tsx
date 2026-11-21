@@ -299,7 +299,9 @@ function ChannelTable({
                     {formatMoney(w.profit)}
                   </td>
                   <td className={cn(CELL_NUM, valueTone(w.margin_pct))}>
-                    {formatPercent(groupMargin(w.local, w.upstream) ?? w.margin_pct)}
+                    {formatPercent(
+                      w.usage_margin_pct ?? groupMargin(w.local, w.upstream) ?? w.margin_pct
+                    )}
                   </td>
                 </tr>
               ))

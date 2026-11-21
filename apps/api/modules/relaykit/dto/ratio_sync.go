@@ -73,6 +73,10 @@ type AnalysisChannelWindow struct {
 	Revenue             *float64 `json:"revenue"`
 	SubscriptionRevenue *float64 `json:"subscription_revenue"`
 	GroupRatio          *float64 `json:"group_ratio"`
+	// UsageMarginPct is the margin actually realised in this window
+	// (revenue − cost) / revenue from consume logs. MarginPct above stays the
+	// modeled unit-price margin used by the group chips.
+	UsageMarginPct *float64 `json:"usage_margin_pct"`
 }
 
 // AnalysisChannel is one bound (channel, model) entry within an alias row.

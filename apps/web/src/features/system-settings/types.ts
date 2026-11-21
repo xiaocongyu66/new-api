@@ -647,6 +647,7 @@ export type PricingAnalysisChannelWindow = {
   revenue: number | null
   subscription_revenue: number | null
   group_ratio: number | null
+  usage_margin_pct: number | null
 }
 
 export type PricingAnalysisChannel = {

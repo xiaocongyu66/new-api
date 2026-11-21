@@ -15,11 +15,11 @@ import (
 func TestTieredWindowCostIsExact(t *testing.T) {
 	const expr = `tier("base", p * 2 + c * 8)`
 
-	samples := []pricingSample{{Prompt: 1000, Completion: 500, Quota: 1}}
+	samples := []pricingSample{{Prompt: 1000, Completion: 500, InputLen: 1000, Quota: 1}}
 	assert.InDelta(t, (2*1000+8*500)/1e6, windowCostUSD(expr, samples), 1e-12)
 
 	// A different completion ratio must not incur the old 1.25x inflation.
-	samples = []pricingSample{{Prompt: 1000, Completion: 2000, Quota: 1}}
+	samples = []pricingSample{{Prompt: 1000, Completion: 2000, InputLen: 1000, Quota: 1}}
 	assert.InDelta(t, (2*1000+8*2000)/1e6, windowCostUSD(expr, samples), 1e-12)
 
 	// Multiple logs sum to the sum of their exact costs.
@@ -156,4 +156,47 @@ func TestResolveUpstreamFields(t *testing.T) {
 	// Nothing matches -> nil: the channel stays unpriced instead of borrowing
 	// a reference source's prices.
 	assert.Nil(t, resolveUpstreamFields("ghost", sourceModels, nil))
+}
+
+// TestWindowCostUsesSettlementInputLen pins the tier-context fix: per-call
+// tiers must resolve against the input length settlement used (Claude-format
+// responses report prompt tokens excluding cache), not plain prompt tokens.
+func TestWindowCostUsesSettlementInputLen(t *testing.T) {
+	const expr = `len <= 10000 ? tier("t1", fixed(0.055)) : tier("t2", fixed(0.11))`
+
+	// 9000 prompt + 2000 cache tokens bills at the 11k tier ($0.11).
+	withCache := []pricingSample{{Prompt: 9000, Completion: 10, InputLen: 11000, Quota: 1}}
+	assert.InDelta(t, 0.11, windowCostUSD(expr, withCache), 1e-12)
+
+	// Under 10k context the same request bills the cheap tier.
+	noCache := []pricingSample{{Prompt: 9000, Completion: 10, InputLen: 9000, Quota: 1}}
+	assert.InDelta(t, 0.055, windowCostUSD(expr, noCache), 1e-12)
+}
+
+// TestTieredExprIgnoresStaleExprForConcreteMode pins that a leftover
+// billing_expr cannot override a stored non-tiered mode: the relay bills from
+// ModelPrice/ModelRatio in that case, so the comparison must too.
+func TestTieredExprIgnoresStaleExprForConcreteMode(t *testing.T) {
+	const stale = `p * 5 + c * 25`
+
+	if expr, ok := tieredExpr("per-request", stale, "", ""); ok {
+		t.Fatalf("stale expr must be ignored for per-request mode, got %q", expr)
+	}
+	if expr, ok := tieredExpr("per-token", stale, "", ""); ok {
+		t.Fatalf("stale expr must be ignored for per-token mode, got %q", expr)
+	}
+
+	// A model with no stored mode keeps the legacy expression fallback.
+	if expr, ok := tieredExpr("", stale, "", ""); !ok || expr != stale {
+		t.Fatalf("bare expression fallback lost: %q ok=%v", expr, ok)
+	}
+}
+
+// TestIsPresetSource covers the reference-preset filter used by
+// latestSnapshotValues.
+func TestIsPresetSource(t *testing.T) {
+	assert.True(t, isPresetSource("models.dev 价格预设(-101)"))
+	assert.True(t, isPresetSource("官方倍率预设(-100)"))
+	assert.False(t, isPresetSource("顺达 抗截断 按次(15)"))
+	assert.False(t, isPresetSource(""))
 }

@@ -167,7 +167,11 @@ func PricingAnalysis(c contract.Context) {
 		matched := matchedSets[i]
 		totalChannels := 0
 		for _, m := range matched {
-			totalChannels += len(bchans[m])
+			for _, ch := range bchans[m] {
+				if ug := usageMap[[2]any{int64(ch.ChannelID), m}]; ug.Requests > 0 || ug.Tokens > 0 {
+					totalChannels++
+				}
+			}
 		}
 		if totalChannels == 0 {
 			continue
@@ -196,6 +200,11 @@ func PricingAnalysis(c contract.Context) {
 			chEntries := make([]dto.AnalysisChannel, 0, len(chs))
 			for _, ch := range chs {
 				ug := usageMap[[2]any{int64(ch.ChannelID), m}]
+				// A binding with no consume logs in range has no cost basis:
+				// pricing it would report a fabricated $0.00 cost and 0% margin.
+				if ug.Requests == 0 && ug.Tokens == 0 {
+					continue
+				}
 				entry, chCost, priced := buildChannelEntry(m, ch, ug, localFields, snapshotBySource, windows, canonicalWindow, tierUsageMap)
 				chEntries = append(chEntries, entry)
 				if priced {
@@ -307,7 +316,7 @@ func aggregateChannelLogs(expr string, tier map[[3]any][]pricingSample, channelI
 	for _, w := range windows {
 		for _, s := range tier[[3]any{int64(channelID), modelName, w}] {
 			found = true
-			if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion); usd != nil {
+			if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen); usd != nil {
 				st.Cost += *usd
 			}
 			if s.BillingSource == billingSourceSubscription {
@@ -543,11 +552,12 @@ func channelWindows(localFields, upstreamFields map[string]any, windows []int, c
 			}
 			profit := revenue - cost
 			entry.Profit = &profit
-			// Real per-window margin replaces the modeled unit-price margin
-			// whenever actual usage exists.
+			// MarginPct stays the modeled unit-price margin so the group chips
+			// keep working; UsageMarginPct is what actually happened in this
+			// window and is the number the dialog shows when present.
 			if revenue > 0 {
 				margin := profit / revenue * 100
-				entry.MarginPct = &margin
+				entry.UsageMarginPct = &margin
 			}
 		}
 		out = append(out, entry)
@@ -565,7 +575,7 @@ func windowCostUSD(expr string, samples []pricingSample) float64 {
 	}
 	var total float64
 	for _, s := range samples {
-		if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion); usd != nil {
+		if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen); usd != nil {
 			total += *usd
 		}
 	}
@@ -786,20 +796,22 @@ func tieredExpr(mode, expr, ctxTier, ctxTierPerCall string) (string, bool) {
 // evalUsd evaluates an expression at a context window and returns USD
 // (raw output is $/1M tokens, so divide by 1e6). Nil on missing/failed eval.
 func evalUsd(expr string, ctx int) *float64 {
-	return evalUsdWithTokens(expr, ctx, ctx/4)
+	return evalUsdWithTokens(expr, ctx, ctx/4, ctx)
 }
 
 // evalUsdWithTokens evaluates an expression with exact per-request token counts.
-// len is set to prompt tokens so tier conditions resolve against the real
-// context, exactly like settlement (consume_quota_realtime.go).
-func evalUsdWithTokens(expr string, prompt, completion int) *float64 {
+// inputLen is the total input context settlement used for tier conditions
+// (BuildTieredTokenParams: prompt tokens, plus cache tokens on Claude-format
+// responses); pricing a log with plain prompt tokens would pick the wrong
+// per-call tier whenever cache tokens push the context over a boundary.
+func evalUsdWithTokens(expr string, prompt, completion, inputLen int) *float64 {
 	if expr == "" {
 		return nil
 	}
 	cost, _, err := priceexpr.RunExpr(expr, priceexpr.TokenParams{
 		P:   float64(prompt),
 		C:   float64(completion),
-		Len: float64(prompt),
+		Len: float64(inputLen),
 	})
 	if err != nil {
 		return nil
@@ -831,6 +843,10 @@ func absInt(x int) int {
 	return x
 }
 
+// presetSourcePrefixes are the synthesized reference channels; they are not
+// real upstreams, so their snapshots must never be consulted for a channel.
+var presetSourcePrefixes = []string{"models.dev 价格预设", "官方倍率预设"}
+
 // latestSnapshotValues returns each source's most recent fetched_at batch with
 // prices nested by source then model then field. Channels fetched in different
 // batches must all stay visible, so the latest batch is chosen per source; the
@@ -853,6 +869,9 @@ func latestSnapshotValues() (int64, map[string]map[string]map[string]any) {
 	bySource := make(map[string]map[string]map[string]any)
 	maxBatch := batches[0].Batch
 	for _, sb := range batches {
+		if isPresetSource(sb.Source) {
+			continue
+		}
 		if sb.Batch > maxBatch {
 			maxBatch = sb.Batch
 		}
@@ -904,20 +923,39 @@ func PriceFluctuation(c contract.Context) {
 // computeFluctuation compares the two most recent distinct snapshot batches.
 // It returns at most 200 changes sorted by source, model, field.
 func computeFluctuation(thresholdPct float64) []dto.FluctuationChange {
-	var batches []int64
+	// Each /fetch persists only the channels it fetched, and every channel is
+	// its own source, so a global "two newest batches" window is empty whenever
+	// the selection changed. Compare each source against its OWN previous
+	// batch instead: the last two fetched_at values per source.
+	type sourceBatch struct {
+		Source string
+		Batch  int64
+	}
+	var batches []sourceBatch
 	if err := dbx.DB.Model(&UpstreamPriceSnapshot{}).
-		Distinct().Order("fetched_at DESC").Limit(2).Pluck("fetched_at", &batches).Error; err != nil {
+		Select("source, MAX(fetched_at) AS batch").
+		Group("source").
+		Scan(&batches).Error; err != nil {
 		common.SysError("failed to query snapshot batches: " + err.Error())
 		return []dto.FluctuationChange{}
 	}
-	if len(batches) < 2 {
+	if len(batches) == 0 {
 		return []dto.FluctuationChange{}
 	}
-	newer, older := batches[0], batches[1]
+	newestBySource := make(map[string]int64, len(batches))
+	for _, b := range batches {
+		newestBySource[b.Source] = b.Batch
+	}
 
+	sources := make([]string, 0, len(newestBySource))
+	for source := range newestBySource {
+		sources = append(sources, source)
+	}
 	var rows []UpstreamPriceSnapshot
 	if err := dbx.DB.Model(&UpstreamPriceSnapshot{}).
-		Where("fetched_at IN ?", batches).Find(&rows).Error; err != nil {
+		Where("source IN ?", sources).
+		Order("source, fetched_at DESC").
+		Find(&rows).Error; err != nil {
 		common.SysError("failed to query snapshot rows: " + err.Error())
 		return []dto.FluctuationChange{}
 	}
@@ -927,11 +965,20 @@ func computeFluctuation(thresholdPct float64) []dto.FluctuationChange {
 	}
 	newVals := make(map[snapKey]string)
 	oldVals := make(map[snapKey]string)
+	// previousBatch tracks each source's second-newest batch so rows are split
+	// into "current" and "previous" per source rather than globally.
+	previousBatch := make(map[string]int64, len(batches))
 	for _, r := range rows {
+		latest, ok := newestBySource[r.Source]
+		if !ok {
+			continue
+		}
 		k := snapKey{r.Source, r.ModelName, r.Field}
-		if r.FetchedAt == newer {
+		switch {
+		case r.FetchedAt == latest:
 			newVals[k] = r.Value
-		} else if r.FetchedAt == older {
+		case r.FetchedAt > previousBatch[r.Source]:
+			previousBatch[r.Source] = r.FetchedAt
 			oldVals[k] = r.Value
 		}
 	}
@@ -966,6 +1013,7 @@ func computeFluctuation(thresholdPct float64) []dto.FluctuationChange {
 		oldValue  any
 		newValue  any
 		changePct *float64
+		fetchedAt int64
 	}
 	var changes []change
 	for k := range keys {
@@ -1006,7 +1054,7 @@ func computeFluctuation(thresholdPct float64) []dto.FluctuationChange {
 		if hasNew {
 			newV = snapshotValue(nv)
 		}
-		changes = append(changes, change{k.source, k.model, k.field, oldV, newV, cp})
+		changes = append(changes, change{k.source, k.model, k.field, oldV, newV, cp, newestBySource[k.source]})
 	}
 
 	sort.SliceStable(changes, func(i, j int) bool {
@@ -1031,10 +1079,21 @@ func computeFluctuation(thresholdPct float64) []dto.FluctuationChange {
 			OldValue:  ch.oldValue,
 			NewValue:  ch.newValue,
 			ChangePct: ch.changePct,
-			FetchedAt: newer,
+			FetchedAt: ch.fetchedAt,
 		})
 	}
 	return out
+}
+
+// isPresetSource reports whether the snapshot source is a synthesized
+// reference channel rather than a real upstream.
+func isPresetSource(source string) bool {
+	for _, prefix := range presetSourcePrefixes {
+		if strings.HasPrefix(source, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func snapshotValueToFloat(v string) (float64, error) {
@@ -1143,8 +1202,11 @@ func chunkStrings(items []string, size int) [][]string {
 // pricingSample is one consume log, retained with the exact token counts that
 // produced its charge plus the payment split and group ratio that scaled it.
 type pricingSample struct {
-	Prompt        int
-	Completion    int
+	Prompt     int
+	Completion int
+	// InputLen is the total input context settlement priced this log against
+	// (Claude-format responses add cache tokens to prompt_tokens).
+	InputLen      int
 	Quota         int64
 	GroupRatio    float64
 	BillingSource string
@@ -1188,10 +1250,17 @@ func tierUsageByWindow(modelNames []string, windows []int, start, end int64) map
 				groupRatio = v
 			}
 			billingSource, _ := meta["billing_source"].(string)
-			key := [3]any{r.ChannelID, r.ModelName, windows[sampleBucket(r.PromptTokens, windows)]}
+			// Settlement tiers resolve against input_tokens_total, which equals
+			// prompt tokens for OpenAI-format and adds cache tokens for Claude.
+			inputLen := r.PromptTokens
+			if v, ok := meta["input_tokens_total"].(float64); ok && int(v) > 0 {
+				inputLen = int(v)
+			}
+			key := [3]any{r.ChannelID, r.ModelName, windows[sampleBucket(inputLen, windows)]}
 			out[key] = append(out[key], pricingSample{
 				Prompt:        r.PromptTokens,
 				Completion:    r.CompletionTokens,
+				InputLen:      inputLen,
 				Quota:         r.Quota,
 				GroupRatio:    groupRatio,
 				BillingSource: billingSource,
