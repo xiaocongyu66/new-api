@@ -532,6 +532,9 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 		IsStream:         info.IsStream,
 		Group:            info.UsingGroup,
 		Other:            other,
+		// Channel tests are operator/system work: keep them out of the user's
+		// own usage and never bill them locally.
+		IsSystem: true,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
 	return testResult{

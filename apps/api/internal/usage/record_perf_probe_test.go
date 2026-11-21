@@ -108,13 +108,13 @@ func TestQuerySummaryAllPoolsProbeCounts(t *testing.T) {
 	assert.Equal(t, "probe", model.Source)
 }
 
-// TestQuerySummaryAllBlendsSources pins the two headline rules: real+probe
-// when requests exist, probe+upstream when they do not.
+// TestQuerySummaryAllBlendsSources pins the blend: upstream health always
+// participates, joined by real requests and probes when those are measured.
 func TestQuerySummaryAllBlendsSources(t *testing.T) {
 	now := time.Now().Unix()
 	latest := bucketStart(now)
 
-	t.Run("real and probe", func(t *testing.T) {
+	t.Run("real, probe and upstream all count", func(t *testing.T) {
 		stubSummaryBuckets(t, PerfMetricSummaryBucket{
 			ModelName: "with-requests", BucketTs: latest,
 			RequestCount: 2, SuccessCount: 2, TotalLatencyMs: 400,
@@ -126,7 +126,22 @@ func TestQuerySummaryAllBlendsSources(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result.Models, 1)
 		assert.Equal(t, "request+probe", result.Models[0].Source)
-		assert.InDelta(t, 50, result.Models[0].SuccessRate, 0.001)
+		// real=100, probe=0, upstream=0 → all three blended.
+		assert.InDelta(t, 100.0/3.0, result.Models[0].SuccessRate, 0.01)
+	})
+
+	t.Run("real and upstream without probe", func(t *testing.T) {
+		stubSummaryBuckets(t, PerfMetricSummaryBucket{
+			ModelName: "with-requests", BucketTs: latest,
+			RequestCount: 2, SuccessCount: 2, TotalLatencyMs: 400,
+		})
+		result, err := QuerySummaryAll(24, nil, nil,
+			[]UpstreamHealthPoint{{Model: "with-requests", Rate: 0, ObservedAt: now}})
+		require.NoError(t, err)
+		require.Len(t, result.Models, 1)
+		assert.Equal(t, "request", result.Models[0].Source)
+		// real=100, upstream=0 → upstream participates even with no probe.
+		assert.InDelta(t, 50, result.Models[0].SuccessRate, 0.01)
 	})
 
 	t.Run("probe and upstream", func(t *testing.T) {

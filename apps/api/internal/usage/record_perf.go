@@ -501,8 +501,11 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 			upstreamRate = &rate
 		}
 
-		// Real traffic + probes when measured; otherwise probes + request-derived
-		// upstream health. A single source keeps its own rate.
+		// Real traffic, probes and request-derived upstream health all count.
+		// Upstream health is a weighted (Σrate×weight/Σweight) signal of the
+		// channels actually serving the model, so it must stay in the blend
+		// even when the model also has real requests — otherwise a healthy or
+		// failing upstream would be invisible on exactly the busiest models.
 		var avgLatency *int64
 		var successRate float64
 		var source string
@@ -513,15 +516,17 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 			measuredLatency := total.totalLatencyMs / total.requestCount
 			avgLatency = &measuredLatency
 			source = "request"
+			signals := []*float64{&realRate}
 			if probe.TotalCount > 0 {
 				probeRate := float64(probe.SuccessCount) / float64(probe.TotalCount) * 100
-				blended := BlendRates(&realRate, &probeRate)
-				if blended != nil {
-					successRate = *blended
-				}
+				signals = append(signals, &probeRate)
 				source = "request+probe"
-			} else {
-				successRate = realRate
+			}
+			if upstreamRate != nil {
+				signals = append(signals, upstreamRate)
+			}
+			if blended := BlendRates(signals...); blended != nil {
+				successRate = *blended
 			}
 			if total.generationMs > 0 {
 				avgTps = float64(total.outputTokens) / (float64(total.generationMs) / 1000.0)
