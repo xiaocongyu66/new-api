@@ -134,6 +134,11 @@ export function UpstreamRatioSync() {
   const [analysisThreshold, setAnalysisThreshold] = useState<number>(10)
   const [selectedAnalysisRow, setSelectedAnalysisRow] = useState<PricingAnalysisRow | null>(null)
   const analysisLoadedRef = useRef(false)
+  // Timestamp of the last successful channel fetch. handleRefreshAnalysis prefetches
+  // /fetch before /analysis to pick up fresh prices, but the confirm-selection flow
+  // already fetched: a second overlapping fetch writes the same fetched_at second and
+  // the snapshot replace-by-second wipes the first batch's rows.
+  const lastFetchAtRef = useRef(0)
   const lastFiltersRef = useRef({
     vendor: analysisVendor,
     days: analysisDays,
@@ -205,6 +210,7 @@ export function UpstreamRatioSync() {
       }
 
       toast.success(t('Upstream prices fetched successfully'))
+      lastFetchAtRef.current = Date.now()
 
       // Channel selection changed: refresh the analysis so costs/profits
       // reflect the newly selected upstreams.
@@ -275,7 +281,10 @@ export function UpstreamRatioSync() {
       const request = buildAnalysisRequest()
       // /analysis reads the latest /fetch snapshot; refresh it first so the
       // comparison reflects current upstream prices after channel selection.
-      if (request.upstreams.length > 0) {
+      // Skip when the caller just fetched (confirm-selection flow) to avoid two
+      // overlapping /fetch calls racing on the same snapshot batch second.
+      const justFetched = Date.now() - lastFetchAtRef.current < 5000
+      if (request.upstreams.length > 0 && !justFetched) {
         try {
           await fetchUpstreamRatios({ upstreams: request.upstreams, timeout: request.timeout })
         } catch {
