@@ -9,13 +9,14 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/ops"
+	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 )
 
 const probeErrorCodeMaxLen = 64
 
-// probeHealthWindowSeconds bounds how old a health observation may be before it
-// stops describing the model's current state.
-const probeHealthWindowSeconds = 24 * 3600
+// probeTrafficWindowSeconds bounds how far back real traffic may be to still
+// describe a model's current usability.
+const probeTrafficWindowSeconds = 24 * 3600
 
 type probeTaskPayload struct {
 	ChannelIds []int `json:"channel_ids,omitempty"`
@@ -59,34 +60,66 @@ func (probeHandler) Run(ctx context.Context, task *ops.SystemTask, runnerID stri
 	finishSystemTaskHandler(task, runnerID, ops.SystemTaskStatusSucceeded, result, nil)
 }
 
-// probeResultForHealth 把一条 request-derived 健康记录翻译成一次探测快照。
-//
-// success 取决于最近一次真实请求的结果，而不是 EWMA 均值：EWMA 会被历史
-// 成功稀释，无法回答“这个模型现在还能不能跑”。没有成功也从未报错的行按
-// 成功处理（暖机期不惩罚）。
-func probeResultForHealth(h channelpkg.ChannelModelHealth) (bool, string) {
-	if h.LastSuccessAt != nil && (h.LastErrorAt == nil || *h.LastSuccessAt >= *h.LastErrorAt) {
-		return true, ""
-	}
-	if h.LastErrorAt != nil {
-		code := h.LastErrorCode
+// probeLogRow is the slice of a consume/error log row the probe needs.
+type probeLogRow struct {
+	ChannelId int
+	ModelName string
+	Type      int
+	UseTime   int
+	Content   string
+}
+
+type probeUnitKey struct {
+	ChannelId int
+	Model     string
+}
+
+type probeOutcome struct {
+	Success   bool
+	LatencyMs int64
+	ErrorCode string
+}
+
+// latestProbeOutcomes collapses log rows (newest first) into one outcome per
+// (channel, model). The newest row decides: a request that failed and was then
+// retried successfully ends with a consume row, so the unit reads as usable —
+// which is the question a probe is supposed to answer. EWMA averages are not
+// used here on purpose: a long history of successes must not mask a model that
+// has just started failing.
+func latestProbeOutcomes(rows []probeLogRow) map[probeUnitKey]probeOutcome {
+	out := make(map[probeUnitKey]probeOutcome, len(rows))
+	for _, row := range rows {
+		model := strings.TrimSpace(row.ModelName)
+		if row.ChannelId <= 0 || model == "" {
+			continue
+		}
+		key := probeUnitKey{ChannelId: row.ChannelId, Model: model}
+		if _, ok := out[key]; ok {
+			continue // rows arrive newest-first; the first one wins
+		}
+		if row.Type == usagedomain.LogTypeConsume {
+			out[key] = probeOutcome{
+				Success:   true,
+				LatencyMs: int64(row.UseTime) * 1000,
+			}
+			continue
+		}
+		code := row.Content
 		if len(code) > probeErrorCodeMaxLen {
 			code = code[:probeErrorCodeMaxLen]
 		}
-		return false, code
+		out[key] = probeOutcome{Success: false, ErrorCode: code}
 	}
-	return true, ""
+	return out
 }
 
-// runProbeTask 用真实请求累积的健康状态生成探测快照。
+// runProbeTask turns real request outcomes into probe snapshots.
 //
-// 它不向上游发送任何请求：每个 (channel, model) 的成败已经由真实流量在
-// channel_model_health 里记录（handle_relay 在每次请求结束时调用
-// RecordRequestAttempts 更新 EWMA、最近成功/失败时间与延迟）。因此这里
-// 既不会消耗 prompt/completion token，也不会让上游多收一分钱，却能回答
-// “这个模型最近到底跑通没有”——而不是仅仅“渠道密钥有效”。
-//
-// 只输出最近 24h 内有观测更新的单元：更早的记录已经不能代表模型当前状态。
+// It sends nothing upstream. Every request already writes a consume log on
+// success or an error log on failure, so the newest row per (channel, model)
+// is direct evidence that the model does or does not run — with no extra
+// tokens spent and no upstream charge. Only 24h of traffic is considered:
+// older evidence no longer describes the model's current state.
 func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, runnerID string) (*probeTaskResult, error) {
 	allChannels, err := channelpkg.GetAllChannels(0, 0, true, false)
 	if err != nil {
@@ -117,22 +150,23 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 	total := len(channels)
 	result := &probeTaskResult{}
 
-	// One query for every unit; the table is keyed by (channel, key_index, model)
-	// and only carries rows that real traffic has observed.
-	var health []channelpkg.ChannelModelHealth
-	if err := dbx.DB.Find(&health).Error; err != nil {
+	now := common.GetTimestamp()
+	cutoff := now - probeTrafficWindowSeconds
+	var rows []probeLogRow
+	if err := dbx.LogDB.Table("logs").
+		Select("channel_id, model_name, type, use_time, content").
+		Where("created_at >= ? AND channel_id > 0 AND model_name <> '' AND type IN ?",
+			cutoff, []int{usagedomain.LogTypeConsume, usagedomain.LogTypeError}).
+		Order("created_at DESC, id DESC").
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	byChannel := make(map[int][]channelpkg.ChannelModelHealth, len(health))
-	cutoffMs := (common.GetTimestamp() - probeHealthWindowSeconds) * 1000
-	for _, row := range health {
-		if row.RequestCount <= 0 || row.ScoreUpdatedAtMs < cutoffMs {
-			continue
-		}
-		byChannel[row.ChannelId] = append(byChannel[row.ChannelId], row)
+	outcomes := latestProbeOutcomes(rows)
+	byChannel := make(map[int][]probeUnitKey, len(channels))
+	for key := range outcomes {
+		byChannel[key.ChannelId] = append(byChannel[key.ChannelId], key)
 	}
 
-	now := common.GetTimestamp()
 	tested := 0
 	for index, channel := range channels {
 		if ctx != nil && ctx.Err() != nil {
@@ -140,27 +174,23 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 		}
 		report(index, total)
 
-		for _, row := range byChannel[channel.Id] {
+		for _, key := range byChannel[channel.Id] {
 			if ctx != nil && ctx.Err() != nil {
 				break
 			}
-			model := strings.TrimSpace(row.Model)
-			if model == "" {
-				continue
-			}
-			success, errorCode := probeResultForHealth(row)
+			outcome := outcomes[key]
 			if err := dbx.DB.Create(&ops.ChannelProbeResult{
 				ChannelId: channel.Id,
-				Model:     model,
-				Success:   success,
-				LatencyMs: int64(row.LatencyEwmaMs),
-				ErrorCode: errorCode,
+				Model:     key.Model,
+				Success:   outcome.Success,
+				LatencyMs: outcome.LatencyMs,
+				ErrorCode: outcome.ErrorCode,
 				CreatedAt: now,
 			}).Error; err != nil {
 				common.SysError("probe result persist failed: " + err.Error())
 			}
 			tested++
-			if success {
+			if outcome.Success {
 				result.Succeeded++
 			} else {
 				result.Failed++
@@ -172,8 +202,8 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 	}
 	result.Tested = tested
 
-	cutoff := now - 7*24*3600
-	if err := dbx.DB.Where("created_at < ?", cutoff).Delete(&ops.ChannelProbeResult{}).Error; err != nil {
+	if err := dbx.DB.Where("created_at < ?", now-7*24*3600).
+		Delete(&ops.ChannelProbeResult{}).Error; err != nil {
 		common.SysError("probe result cleanup failed: " + err.Error())
 	}
 	ops.EvaluateAndNotifyProbeThresholds(ctx)
