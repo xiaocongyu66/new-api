@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +12,10 @@ import (
 )
 
 const probeErrorCodeMaxLen = 64
+
+// probeHealthWindowSeconds bounds how old a health observation may be before it
+// stops describing the model's current state.
+const probeHealthWindowSeconds = 24 * 3600
 
 type probeTaskPayload struct {
 	ChannelIds []int `json:"channel_ids,omitempty"`
@@ -56,33 +59,45 @@ func (probeHandler) Run(ctx context.Context, task *ops.SystemTask, runnerID stri
 	finishSystemTaskHandler(task, runnerID, ops.SystemTaskStatusSucceeded, result, nil)
 }
 
-// runProbeTask 零消耗探测每个启用渠道（payload 限定时仅限给定 id）。
+// probeResultForHealth 把一条 request-derived 健康记录翻译成一次探测快照。
 //
-// 探测只请求上游模型列表（GET /v1/models），不发送任何对话消息，因此不会
-// 产生 prompt/completion token，也不写消费日志；可用性与耗时落到
-// ChannelProbeResult 供「上游情况」与模型广场图表聚合，随后清理 7 天前旧行
-// 并评估阈值通知。
+// success 取决于最近一次真实请求的结果，而不是 EWMA 均值：EWMA 会被历史
+// 成功稀释，无法回答“这个模型现在还能不能跑”。没有成功也从未报错的行按
+// 成功处理（暖机期不惩罚）。
+func probeResultForHealth(h channelpkg.ChannelModelHealth) (bool, string) {
+	if h.LastSuccessAt != nil && (h.LastErrorAt == nil || *h.LastSuccessAt >= *h.LastErrorAt) {
+		return true, ""
+	}
+	if h.LastErrorAt != nil {
+		code := h.LastErrorCode
+		if len(code) > probeErrorCodeMaxLen {
+			code = code[:probeErrorCodeMaxLen]
+		}
+		return false, code
+	}
+	return true, ""
+}
+
+// runProbeTask 用真实请求累积的健康状态生成探测快照。
+//
+// 它不向上游发送任何请求：每个 (channel, model) 的成败已经由真实流量在
+// channel_model_health 里记录（handle_relay 在每次请求结束时调用
+// RecordRequestAttempts 更新 EWMA、最近成功/失败时间与延迟）。因此这里
+// 既不会消耗 prompt/completion token，也不会让上游多收一分钱，却能回答
+// “这个模型最近到底跑通没有”——而不是仅仅“渠道密钥有效”。
+//
+// 只输出最近 24h 内有观测更新的单元：更早的记录已经不能代表模型当前状态。
 func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, runnerID string) (*probeTaskResult, error) {
 	allChannels, err := channelpkg.GetAllChannels(0, 0, true, false)
 	if err != nil {
 		return nil, err
 	}
 	channels := make([]*channelpkg.Channel, 0, len(allChannels))
-	skipped := 0
 	for _, ch := range allChannels {
 		if ch.Status != common.ChannelStatusEnabled {
 			continue
 		}
-		// 异步/任务型渠道没有同步探测入口：跳过而不是记为失败，
-		// 否则会拉低可用率并可能触发误自动禁用。
-		if isChannelTypeTestUnsupported(ch.Type) {
-			skipped++
-			continue
-		}
 		channels = append(channels, ch)
-	}
-	if skipped > 0 {
-		common.SysLog("channel probe: skipped unsupported channel types = " + strconv.Itoa(skipped))
 	}
 	if len(channelIds) > 0 {
 		wanted := make(map[int]struct{}, len(channelIds))
@@ -101,51 +116,46 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 	report := ops.NewSystemTaskProgressReporter(task, runnerID)
 	total := len(channels)
 	result := &probeTaskResult{}
-	tested := 0
 
+	// One query for every unit; the table is keyed by (channel, key_index, model)
+	// and only carries rows that real traffic has observed.
+	var health []channelpkg.ChannelModelHealth
+	if err := dbx.DB.Find(&health).Error; err != nil {
+		return nil, err
+	}
+	byChannel := make(map[int][]channelpkg.ChannelModelHealth, len(health))
+	cutoffMs := (common.GetTimestamp() - probeHealthWindowSeconds) * 1000
+	for _, row := range health {
+		if row.RequestCount <= 0 || row.ScoreUpdatedAtMs < cutoffMs {
+			continue
+		}
+		byChannel[row.ChannelId] = append(byChannel[row.ChannelId], row)
+	}
+
+	now := common.GetTimestamp()
+	tested := 0
 	for index, channel := range channels {
 		if ctx != nil && ctx.Err() != nil {
 			break
 		}
 		report(index, total)
 
-		// Zero-cost probe: only GET the upstream model list. No chat request is
-		// sent, so no prompt/completion tokens are consumed and nothing is
-		// billed. One request covers every model declared by the channel, so a
-		// channel with 20 models still costs a single metadata call.
-		tik := time.Now()
-		_, probeErr := fetchChannelUpstreamModelIDs(channel)
-		ms := time.Since(tik).Milliseconds()
-		success := probeErr == nil
-		errorCode := ""
-		if probeErr != nil {
-			errorCode = probeErr.Error()
-			if len(errorCode) > probeErrorCodeMaxLen {
-				errorCode = errorCode[:probeErrorCodeMaxLen]
-			}
-		}
-
-		seen := make(map[string]struct{}, len(channel.GetModels()))
-		for _, rawModel := range channel.GetModels() {
+		for _, row := range byChannel[channel.Id] {
 			if ctx != nil && ctx.Err() != nil {
 				break
 			}
-			model := strings.TrimSpace(rawModel)
+			model := strings.TrimSpace(row.Model)
 			if model == "" {
 				continue
 			}
-			if _, ok := seen[model]; ok {
-				continue
-			}
-			seen[model] = struct{}{}
-
+			success, errorCode := probeResultForHealth(row)
 			if err := dbx.DB.Create(&ops.ChannelProbeResult{
 				ChannelId: channel.Id,
 				Model:     model,
 				Success:   success,
-				LatencyMs: ms,
+				LatencyMs: int64(row.LatencyEwmaMs),
 				ErrorCode: errorCode,
-				CreatedAt: common.GetTimestamp(),
+				CreatedAt: now,
 			}).Error; err != nil {
 				common.SysError("probe result persist failed: " + err.Error())
 			}
@@ -156,25 +166,13 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 				result.Failed++
 			}
 		}
-		if common.RequestInterval > 0 {
-			if ctx == nil {
-				time.Sleep(common.RequestInterval)
-			} else {
-				select {
-				case <-ctx.Done():
-					goto done
-				case <-time.After(common.RequestInterval):
-				}
-			}
-		}
 	}
-done:
 	if ctx == nil || ctx.Err() == nil {
 		report(total, total)
 	}
 	result.Tested = tested
 
-	cutoff := common.GetTimestamp() - 7*24*3600
+	cutoff := now - 7*24*3600
 	if err := dbx.DB.Where("created_at < ?", cutoff).Delete(&ops.ChannelProbeResult{}).Error; err != nil {
 		common.SysError("probe result cleanup failed: " + err.Error())
 	}
