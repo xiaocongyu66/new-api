@@ -466,10 +466,13 @@ func channelSourceKey(name string, id int) string {
 
 // upstreamAliasCandidates returns the ordered fallback names for a plaza alias
 // whose upstream snapshot name may differ from the local name. Exact names win;
-// only misses strip known prefixes/suffixes ([套餐], a/, [次]) and consult
-// model_mapping.
+// then the channel's own model_mapping (the admin's explicit statement of what
+// this channel serves), then known prefixes/suffixes ([套餐], a/, [次]).
 func upstreamAliasCandidates(modelName string, mapping map[string]string) []string {
 	candidates := []string{modelName}
+	if mapped := mapping[modelName]; mapped != "" {
+		candidates = append(candidates, mapped)
+	}
 	if name := strings.TrimSpace(strings.TrimPrefix(modelName, "[套餐]")); name != "" && name != modelName {
 		candidates = append(candidates, name)
 	}
@@ -478,9 +481,6 @@ func upstreamAliasCandidates(modelName string, mapping map[string]string) []stri
 	}
 	if name := strings.TrimSpace(strings.TrimSuffix(modelName, "[次]")); name != "" && name != modelName {
 		candidates = append(candidates, name)
-	}
-	if mapped := mapping[modelName]; mapped != "" {
-		candidates = append(candidates, mapped)
 	}
 	return candidates
 }
