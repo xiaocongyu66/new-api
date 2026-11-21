@@ -108,6 +108,7 @@ GET /api/proxy/status
 GET /api/rankings
 GET /api/ratio_config
 GET /api/ratio_sync/channels
+GET /api/ratio_sync/fluctuation
 GET /api/redemption/
 GET /api/redemption/:id
 GET /api/redemption/names
@@ -222,6 +223,7 @@ POST /api/proxy/nodes/test
 POST /api/proxy/reload
 POST /api/qqbot/webhook
 POST /api/qqbot/webhook/*token
+POST /api/ratio_sync/analysis
 POST /api/ratio_sync/fetch
 POST /api/redemption/
 POST /api/setup
