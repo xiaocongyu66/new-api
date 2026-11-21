@@ -282,3 +282,20 @@ vertex/gemini-4-argon         | 2
 - **P2-1** models.dev 仍然按「跨 provider 取最低价」落库；只作为可选的参考渠道，不再自动兜底。
 - **P1-1** 未加 `comparable` 标记：改为真实逐日志经济学后，窗口内没有日志的格子显示 `—`，不再伪造百分比。
 - **P2-4** 快照保留仍为 12 个批次。
+
+
+### 第二轮（分组口径）
+
+用户指出两点，均已核实并修复：
+
+1. **阶梯计费没区分按次/按量** —— 原来一律显示「阶梯表达式」。改为 `Tiered (per request)` / `Tiered (per token)`，依据 `price_mode` 的 `per_call_tiered` / `per_token_tiered`。
+2. **分组倍率没有真正参与** —— 参考 `yaojin2meng/ops-collector` 的口径（`USD/1M = 倍率 × 2 × 分组倍率`，按次 `model_price × 分组倍率`），确认上游 `/api/pricing` 同时给出站点级 `group_ratio` 与模型级 `enable_groups`。本站原先只存了模型字段，把这两个丢了。现在：
+   - fetch 把 `group_ratio`（存在空模型名下）与 `enable_groups` / 模型级 `group_ratio` 一并入库；
+   - 分析时按上游分组倍率放大上游单价：单分组精确；多分组取最高倍率并标记 `upstream_group_ambiguous`（保守估成本）；
+   - abilities 的 `group` 折进渠道绑定（同渠道同模型不再重复成多行），响应里返回站内分组列表与 `GroupRatio` 表；
+   - 前端在渠道块里给站内分组做 chip（`default ×1.00` / `vip ×2.00` / `清水rp ×0.80`），切换即重算「本站 = 单价 × 倍率」与毛利率；上游侧显示 `Upstream group Gemini 按次 ×1.00`。
+
+顺带修掉两个会污染对比的缺陷：
+
+3. **渠道映射优先级** —— 上游目录里同名模型（如 `gemini-4-hydrogen` 的按量行）会盖住渠道映射指向的按次模型（`哈基米4h`）。改为 `model_mapping` 优先，同名目录行只作无映射时的回退。
+4. **本地残留表达式覆盖按次价** —— `billing_mode=per-request` 且 `ModelPrice` 已配置时，残留的旧 `billing_expr` 仍被当作有效价格，导致「本站」显示按量分档价而 relay 实际按次收费。改为只有完全没有 mode 时才回退到表达式。
