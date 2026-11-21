@@ -129,7 +129,10 @@ func TestResolveUpstreamFields(t *testing.T) {
 	assert.Equal(t, "via-mapping", got[field])
 
 	// Mapping wins over the stripped name when both exist.
-	got = resolveUpstreamFields("[套餐]x", map[string]map[string]any{"x": {field: "stripped"}}, map[string]string{"[套餐]x": "mapped"})
+	got = resolveUpstreamFields("[套餐]x", map[string]map[string]any{
+		"x":      {field: "stripped"},
+		"mapped": {field: "via-mapping"},
+	}, map[string]string{"[套餐]x": "mapped"})
 	require.NotNil(t, got)
 	assert.Equal(t, "via-mapping", got[field])
 
