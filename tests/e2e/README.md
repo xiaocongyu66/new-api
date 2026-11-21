@@ -1,6 +1,6 @@
-# Nailao Features & Theme E2E Tests
+# Features & Theme E2E Tests
 
-This directory contains end-to-end tests for the ported Nailao features using Playwright.
+This directory contains end-to-end tests for the ported features using Playwright.
 
 ## Test Scope
 

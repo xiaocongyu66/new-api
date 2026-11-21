@@ -57,46 +57,6 @@ func LoadAllProbeResults24h(ctx context.Context) ([]ChannelProbeResult, error) {
 	return rows, nil
 }
 
-// LoadProbeBuckets aggregates probe rows into hourly buckets keyed by model.
-// Counting successes and totals per bucket first keeps the aggregation
-// database-agnostic and lets the chart pool all channels for one model.
-func LoadProbeBuckets(startTs, endTs, bucketSeconds int64) ([]usage.ProbeBucket, error) {
-	if bucketSeconds <= 0 {
-		bucketSeconds = 3600
-	}
-	var rows []ChannelProbeResult
-	if err := dbx.DB.Where("created_at >= ? AND created_at <= ?", startTs, endTs).
-		Order("created_at ASC, id ASC").Find(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	type bucketKey struct {
-		model string
-		ts    int64
-	}
-	buckets := map[bucketKey]*usage.ProbeBucket{}
-	order := make([]bucketKey, 0, len(rows))
-	for _, row := range rows {
-		key := bucketKey{model: row.Model, ts: row.CreatedAt - row.CreatedAt%bucketSeconds}
-		bucket, ok := buckets[key]
-		if !ok {
-			bucket = &usage.ProbeBucket{Model: row.Model, BucketTs: key.ts}
-			buckets[key] = bucket
-			order = append(order, key)
-		}
-		bucket.TotalCount++
-		bucket.TotalLatencyMs += row.LatencyMs
-		if row.Success {
-			bucket.SuccessCount++
-		}
-	}
-	out := make([]usage.ProbeBucket, 0, len(order))
-	for _, key := range order {
-		out = append(out, *buckets[key])
-	}
-	return out, nil
-}
-
 type upstreamHealthRow struct {
 	ChannelID          int     `gorm:"column:channel_id"`
 	Model              string  `gorm:"column:model"`

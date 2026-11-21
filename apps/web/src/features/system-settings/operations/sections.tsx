@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { SystemBehaviorSection } from '../general/system-behavior-section'
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
-import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
@@ -76,20 +75,6 @@ const OPERATIONS_SECTIONS = [
           SMTPInsecureSkipVerify: settings.SMTPInsecureSkipVerify,
           SMTPForceAuthLogin: settings.SMTPForceAuthLogin,
           SMTPAccountPool: settings.SMTPAccountPool,
-        }}
-      />
-    ),
-  },
-  {
-    id: 'worker',
-    titleKey: 'Worker Proxy',
-    build: (settings: OperationsSettings) => (
-      <WorkerSettingsSection
-        defaultValues={{
-          WorkerUrl: settings.WorkerUrl,
-          WorkerValidKey: settings.WorkerValidKey,
-          WorkerAllowHttpImageRequestEnabled:
-            settings.WorkerAllowHttpImageRequestEnabled,
         }}
       />
     ),

@@ -90,9 +90,9 @@ function niceCeil(value: number): number {
   return step * magnitude
 }
 
-// Compact source label reusing existing translations; combined sources name
-// both contributors so an upstream estimate is never mistaken for a counted
-// probe. `No data` covers an empty hour.
+// Compact source label reusing existing translations. Only real requests and
+// weighted upstream health feed the card; the old probe source is gone, so no
+// hour can be labelled as a probe. `No data` covers an empty hour.
 function sourceLabel(
   source: ModelPerfTrendPoint['source'] | undefined,
   t: (key: string) => string
@@ -100,12 +100,8 @@ function sourceLabel(
   switch (source) {
     case 'request':
       return t('Request')
-    case 'request+probe':
-      return `${t('Request')} + ${t('Probe')}`
-    case 'probe':
-      return t('Probe')
-    case 'probe+upstream':
-      return `${t('Probe')} + ${t('Upstream')}`
+    case 'request+upstream':
+      return `${t('Request')} + ${t('Upstream')}`
     case 'upstream':
       return t('Upstream')
     case 'none':

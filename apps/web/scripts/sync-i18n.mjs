@@ -101,7 +101,6 @@ const BRAND_AND_LITERAL_KEYS = new Set([
   'Webhook URL',
   'Webhook URL:',
   'Well-Known URL',
-  'Worker URL',
   'Xinference',
   'Xunfei',
   'Zhipu V4',

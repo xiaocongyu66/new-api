@@ -515,9 +515,6 @@ export type OperationsSettings = {
   SMTPInsecureSkipVerify: boolean
   SMTPForceAuthLogin: boolean
   SMTPAccountPool: string
-  WorkerUrl: string
-  WorkerValidKey: string
-  WorkerAllowHttpImageRequestEnabled: boolean
   LogConsumeEnabled: boolean
   'performance_setting.disk_cache_enabled': boolean
   'performance_setting.disk_cache_threshold_mb': number

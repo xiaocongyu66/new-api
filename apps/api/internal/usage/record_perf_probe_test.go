@@ -10,49 +10,39 @@ import (
 
 // TestRecentSeriesSources pins that every hour is backed by a real sample or
 // left empty. Filling it with 100% success and 0 ms made every model look
-// perfectly healthy outside its measured hours.
+// perfectly healthy outside its measured hours. Probe hours no longer exist:
+// the card is fed by real requests and weighted upstream health only.
 func TestRecentSeriesSources(t *testing.T) {
-	latest := bucketStart(time.Now().Unix())
 	step := GetBucketSeconds()
 	if step <= 0 {
 		step = 3600
 	}
-	emptyTs := latest - 2*step
-	probeTs := latest - step
+	latest := bucketStart(time.Now().Unix())
 	requestTs := latest
 
 	points := recentSeries(
 		map[int64]counters{
 			requestTs: {requestCount: 2, successCount: 1, totalLatencyMs: 1800},
 		},
-		map[int64]ProbeBucket{
-			probeTs:   {TotalCount: 3, SuccessCount: 1, TotalLatencyMs: 900},
-			requestTs: {TotalCount: 5, SuccessCount: 5, TotalLatencyMs: 25},
-		},
 		nil, nil,
-		3,
+		2,
 	)
 
-	require.Len(t, points, 3)
+	require.Len(t, points, 2)
 
-	assert.Equal(t, emptyTs, points[0].Ts)
+	// Compare against the series' own anchor: the clock may tick over an hour
+	// boundary between building the fixture and calling recentSeries.
+	assert.Equal(t, points[1].Ts-step, points[0].Ts)
 	assert.Equal(t, "none", points[0].Source)
 	assert.Nil(t, points[0].LatencyMs)
 	assert.Nil(t, points[0].SuccessRate)
 
-	assert.Equal(t, probeTs, points[1].Ts)
-	assert.Equal(t, "probe", points[1].Source)
+	assert.Equal(t, requestTs, points[1].Ts)
+	assert.Equal(t, "request", points[1].Source)
 	require.NotNil(t, points[1].LatencyMs)
-	assert.Equal(t, int64(300), *points[1].LatencyMs)
+	assert.Equal(t, int64(900), *points[1].LatencyMs)
 	require.NotNil(t, points[1].SuccessRate)
-	assert.InDelta(t, 33.33, *points[1].SuccessRate, 0.001)
-
-	assert.Equal(t, requestTs, points[2].Ts)
-	assert.Equal(t, "request", points[2].Source)
-	require.NotNil(t, points[2].LatencyMs)
-	assert.Equal(t, int64(900), *points[2].LatencyMs)
-	require.NotNil(t, points[2].SuccessRate)
-	assert.InDelta(t, 50, *points[2].SuccessRate, 0.001)
+	assert.InDelta(t, 50, *points[1].SuccessRate, 0.001)
 }
 
 // TestRecentSeriesUpstreamFallback pins that an unmeasured hour shows the
@@ -61,7 +51,7 @@ func TestRecentSeriesUpstreamFallback(t *testing.T) {
 	rate := 42.0
 	latency := int64(310)
 
-	points := recentSeries(nil, nil, &rate, &latency, 2)
+	points := recentSeries(nil, &rate, &latency, 2)
 	require.Len(t, points, 2)
 	for _, point := range points {
 		assert.Equal(t, "upstream", point.Source)
@@ -71,7 +61,7 @@ func TestRecentSeriesUpstreamFallback(t *testing.T) {
 		assert.Equal(t, int64(310), *point.LatencyMs)
 	}
 
-	points = recentSeries(nil, nil, &rate, nil, 1)
+	points = recentSeries(nil, &rate, nil, 1)
 	require.Len(t, points, 1)
 	assert.Equal(t, "upstream", points[0].Source)
 	require.NotNil(t, points[0].SuccessRate)
@@ -87,63 +77,31 @@ func stubSummaryBuckets(t *testing.T, buckets ...PerfMetricSummaryBucket) {
 	}
 }
 
-// TestQuerySummaryAllPoolsProbeCounts covers a model with no relay requests:
-// its chart must still appear, with one rate pooled across probe samples.
-func TestQuerySummaryAllPoolsProbeCounts(t *testing.T) {
-	stubSummaryBuckets(t)
-	latest := bucketStart(time.Now().Unix())
-
-	result, err := QuerySummaryAll(24, nil, []ProbeBucket{
-		{Model: "probe-only", BucketTs: latest - 3600, TotalCount: 4, SuccessCount: 3, TotalLatencyMs: 800},
-		{Model: "probe-only", BucketTs: latest, TotalCount: 2, SuccessCount: 0, TotalLatencyMs: 400},
-	}, nil)
-	require.NoError(t, err)
-	require.Len(t, result.Models, 1)
-
-	model := result.Models[0]
-	assert.Equal(t, "probe-only", model.ModelName)
-	assert.InDelta(t, 50, model.SuccessRate, 0.001)
-	require.NotNil(t, model.AvgLatencyMs)
-	assert.Equal(t, int64(200), *model.AvgLatencyMs)
-	assert.Equal(t, "probe", model.Source)
-}
-
-// TestQuerySummaryAllBlendsSources pins the two headline rules: real+probe
-// when requests exist, probe+upstream when they do not.
+// TestQuerySummaryAllBlendsSources pins the blend: the model-square rate is
+// upstream health (static-weight averaged) averaged with real request
+// outcomes. Probe requests no longer exist, so a probe bucket alone must not
+// outrank a measured upstream signal.
 func TestQuerySummaryAllBlendsSources(t *testing.T) {
 	now := time.Now().Unix()
 	latest := bucketStart(now)
 
-	t.Run("real and probe", func(t *testing.T) {
+	t.Run("real requests averaged with upstream", func(t *testing.T) {
 		stubSummaryBuckets(t, PerfMetricSummaryBucket{
 			ModelName: "with-requests", BucketTs: latest,
 			RequestCount: 2, SuccessCount: 2, TotalLatencyMs: 400,
 		})
-		result, err := QuerySummaryAll(24, nil, []ProbeBucket{{
-			Model: "with-requests", BucketTs: latest,
-			TotalCount: 2, SuccessCount: 0, TotalLatencyMs: 100,
-		}}, []UpstreamHealthPoint{{Model: "with-requests", Rate: 0, ObservedAt: now}})
+		result, err := QuerySummaryAll(24, nil,
+			[]UpstreamHealthPoint{{Model: "with-requests", Rate: 0, ObservedAt: now}})
 		require.NoError(t, err)
 		require.Len(t, result.Models, 1)
-		assert.Equal(t, "request+probe", result.Models[0].Source)
-		assert.InDelta(t, 50, result.Models[0].SuccessRate, 0.001)
-	})
-
-	t.Run("probe and upstream", func(t *testing.T) {
-		stubSummaryBuckets(t)
-		result, err := QuerySummaryAll(24, nil, []ProbeBucket{{
-			Model: "probe-only", BucketTs: latest,
-			TotalCount: 2, SuccessCount: 2, TotalLatencyMs: 100,
-		}}, []UpstreamHealthPoint{{Model: "probe-only", Rate: 0, ObservedAt: now}})
-		require.NoError(t, err)
-		require.Len(t, result.Models, 1)
-		assert.Equal(t, "probe+upstream", result.Models[0].Source)
-		assert.InDelta(t, 50, result.Models[0].SuccessRate, 0.001)
+		assert.Equal(t, "request+upstream", result.Models[0].Source)
+		// real=100, upstream=0 → plain average.
+		assert.InDelta(t, 50, result.Models[0].SuccessRate, 0.01)
 	})
 
 	t.Run("stale upstream ignored", func(t *testing.T) {
 		stubSummaryBuckets(t)
-		result, err := QuerySummaryAll(24, nil, nil,
+		result, err := QuerySummaryAll(24, nil,
 			[]UpstreamHealthPoint{{Model: "stale", Rate: 0, ObservedAt: now - 48*3600}})
 		require.NoError(t, err)
 		assert.Empty(t, result.Models, "an observation older than the window is not a signal")
@@ -169,7 +127,7 @@ func TestUpstreamRateWeightedByStaticWeight(t *testing.T) {
 func TestQuerySummaryAllWeightsUpstreamChannels(t *testing.T) {
 	stubSummaryBuckets(t)
 	now := time.Now().Unix()
-	result, err := QuerySummaryAll(24, nil, nil, []UpstreamHealthPoint{
+	result, err := QuerySummaryAll(24, nil, []UpstreamHealthPoint{
 		{Model: "weighted", ChannelID: 1, Rate: 20, Weight: 1, ObservedAt: now},
 		{Model: "weighted", ChannelID: 2, Rate: 100, Weight: 3, ObservedAt: now},
 	})
@@ -177,4 +135,20 @@ func TestQuerySummaryAllWeightsUpstreamChannels(t *testing.T) {
 	require.Len(t, result.Models, 1)
 	assert.InDelta(t, 80, result.Models[0].SuccessRate, 0.001)
 	assert.Equal(t, "upstream", result.Models[0].Source)
+}
+
+// TestAtomicBucketDropsImpossibleTtft pins the sample-validity guard: a first
+// token cannot arrive after the request has already finished. Retries reuse the
+// original StartTime, so an occasional sample reports TTFT > total latency;
+// admitting it would make the displayed average exceed the latency average and
+// look impossible to the operator.
+func TestAtomicBucketDropsImpossibleTtft(t *testing.T) {
+	var b atomicBucket
+	b.add(Sample{LatencyMs: 2000, TtftMs: 500, HasTtft: true})
+	b.add(Sample{LatencyMs: 1000, TtftMs: 5000, HasTtft: true}) // corrupt
+	b.add(Sample{LatencyMs: 0, TtftMs: 800, HasTtft: true})     // unknown latency, keep
+
+	got := b.snapshot()
+	assert.Equal(t, int64(2), got.ttftCount, "the impossible sample must be dropped")
+	assert.Equal(t, int64(1300), got.ttftSumMs)
 }

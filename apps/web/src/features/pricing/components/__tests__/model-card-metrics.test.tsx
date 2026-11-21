@@ -191,17 +191,17 @@ describe('model-square card success-rate axis', () => {
   })
 })
 
-describe('model-square card probe fallback', () => {
-  // A quiet hour must not become a fabricated 100% / 0 ms sample. Probe
-  // results fill it with a real upstream check, and hours with neither source
-  // stay empty so the line breaks instead of interpolating a made-up rate.
-  test('probe hours are drawn and unsampled hours are gaps', async () => {
+describe('model-square card upstream fallback', () => {
+  // A quiet hour must not become a fabricated 100% / 0 ms sample. Weighted
+  // upstream health fills it, and hours with neither source stay empty so the
+  // line breaks instead of interpolating a made-up rate.
+  test('upstream hours are drawn and unsampled hours are gaps', async () => {
     const perf: ModelPerfBadgeData = {
       avg_latency_ms: 400,
       success_rate: 90,
       avg_tps: 42,
       recent_series: [
-        { ts: 1_700_000_000, latency_ms: 250, success_rate: 60, source: 'probe' },
+        { ts: 1_700_000_000, latency_ms: 250, success_rate: 60, source: 'upstream' },
         { ts: 1_700_003_600, latency_ms: null, success_rate: null, source: 'none' },
         { ts: 1_700_007_200, latency_ms: 400, success_rate: 90, source: 'request' },
       ],
@@ -237,7 +237,8 @@ describe('model-square card probe fallback', () => {
     }
 
     await clickAt(40)
-    expect(host.textContent).toContain('Probe')
+    expect(host.textContent).toContain('Upstream')
+    expect(host.textContent).not.toContain('Probe')
 
     await clickAt(201)
     expect(host.textContent).toContain('—')

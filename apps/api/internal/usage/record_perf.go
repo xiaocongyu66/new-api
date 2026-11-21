@@ -75,17 +75,6 @@ type ModelSummary struct {
 	RequestCount int64              `json:"-"`
 }
 
-// ProbeBucket is one hourly bucket of upstream-probe results for a model.
-// Probe rows are keyed by channel and model; collapsing them to model buckets
-// keeps the model-square chart independent of channel identity.
-type ProbeBucket struct {
-	Model          string
-	BucketTs       int64
-	TotalCount     int64
-	SuccessCount   int64
-	TotalLatencyMs int64
-}
-
 // UpstreamHealthPoint is one channel/model request-derived health signal:
 // ewma_score from channel_model_health, rescaled to a 0-100 success rate.
 // ObservedAt marks the latest score update behind the estimate.
@@ -147,8 +136,13 @@ func (b *atomicBucket) add(sample Sample) {
 		b.totalLatencyMs.Add(sample.LatencyMs)
 	}
 	if sample.HasTtft && sample.TtftMs >= 0 {
-		b.ttftSumMs.Add(sample.TtftMs)
-		b.ttftCount.Add(1)
+		// A first token can never arrive after the request finished, so a TTFT
+		// above the sample's own latency is corrupt (e.g. a retry that reused
+		// the original StartTime). Drop it instead of poisoning the average.
+		if sample.LatencyMs <= 0 || sample.TtftMs <= sample.LatencyMs {
+			b.ttftSumMs.Add(sample.TtftMs)
+			b.ttftCount.Add(1)
+		}
 	}
 	if sample.OutputTokens > 0 && sample.GenerationMs > 0 {
 		b.outputTokens.Add(sample.OutputTokens)
@@ -368,7 +362,7 @@ func Query(params QueryParams) (QueryResult, error) {
 	return buildQueryResult(params.Model, merged), nil
 }
 
-func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, upstreamPoints []UpstreamHealthPoint) (SummaryAllResult, error) {
+func QuerySummaryAll(hours int, groups []string, upstreamPoints []UpstreamHealthPoint) (SummaryAllResult, error) {
 	if hours <= 0 {
 		hours = 24
 	}
@@ -417,26 +411,6 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 		return true
 	})
 
-	// Pool probe counts across channels per model: summing successes and
-	// totals before dividing is the unbiased rate, unlike averaging channel
-	// rates (which overweights channels with few probes).
-	probesByModel := map[string]map[int64]ProbeBucket{}
-	probeTotals := map[string]ProbeBucket{}
-	for _, probe := range probeBuckets {
-		if probe.TotalCount <= 0 {
-			continue
-		}
-		if _, ok := probesByModel[probe.Model]; !ok {
-			probesByModel[probe.Model] = map[int64]ProbeBucket{}
-		}
-		probesByModel[probe.Model][probe.BucketTs] = probe
-		total := probeTotals[probe.Model]
-		total.TotalCount += probe.TotalCount
-		total.SuccessCount += probe.SuccessCount
-		total.TotalLatencyMs += probe.TotalLatencyMs
-		probeTotals[probe.Model] = total
-	}
-
 	// Upstream health is a request-derived snapshot per (channel, model). Only
 	// observations inside the window count. The model rate is the static-weight
 	// average of its channel rates: Σ(rate×weight)/Σweight. Zero weight carries
@@ -468,16 +442,9 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 		upstreamCount[model] = len(points)
 	}
 
-	modelNames := make([]string, 0, len(totals)+len(probeTotals)+len(upstreamCount))
-	seen := make(map[string]struct{}, len(totals)+len(probeTotals)+len(upstreamCount))
+	modelNames := make([]string, 0, len(totals)+len(upstreamCount))
+	seen := make(map[string]struct{}, len(totals)+len(upstreamCount))
 	for name := range totals {
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		modelNames = append(modelNames, name)
-	}
-	for name := range probeTotals {
 		if _, ok := seen[name]; ok {
 			continue
 		}
@@ -495,14 +462,14 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 	models := make([]ModelSummary, 0, len(modelNames))
 	for _, name := range modelNames {
 		total := totals[name]
-		probe := probeTotals[name]
 		var upstreamRate *float64
 		if rate, ok := upstreamRateByModel[name]; ok {
 			upstreamRate = &rate
 		}
 
-		// Real traffic + probes when measured; otherwise probes + request-derived
-		// upstream health. A single source keeps its own rate.
+		// Success rate = upstream health (static-weight averaged) blended with
+		// real request outcomes. Probe requests are gone: they cost upstream
+		// tokens and only re-measured what real traffic already reports.
 		var avgLatency *int64
 		var successRate float64
 		var source string
@@ -513,52 +480,24 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 			measuredLatency := total.totalLatencyMs / total.requestCount
 			avgLatency = &measuredLatency
 			source = "request"
-			if probe.TotalCount > 0 {
-				probeRate := float64(probe.SuccessCount) / float64(probe.TotalCount) * 100
-				blended := BlendRates(&realRate, &probeRate)
-				if blended != nil {
+			if upstreamRate != nil {
+				if blended := BlendRates(&realRate, upstreamRate); blended != nil {
 					successRate = *blended
 				}
-				source = "request+probe"
+				source = "request+upstream"
 			} else {
 				successRate = realRate
 			}
 			if total.generationMs > 0 {
 				avgTps = float64(total.outputTokens) / (float64(total.generationMs) / 1000.0)
 			}
-		case probe.TotalCount > 0:
-			probeRate := float64(probe.SuccessCount) / float64(probe.TotalCount) * 100
-			measuredLatency := probe.TotalLatencyMs / probe.TotalCount
-			avgLatency = &measuredLatency
-			source = "probe"
-			successRate = probeRate
-			if upstreamRate != nil {
-				blended := BlendRates(&probeRate, upstreamRate)
-				if blended != nil {
-					successRate = *blended
-				}
-				source = "probe+upstream"
-			}
-		default:
+		case upstreamRate != nil:
 			source = "upstream"
+			successRate = *upstreamRate
 			avgLatency = upstreamLatencyByModel[name]
-			if upstreamRate != nil {
-				successRate = *upstreamRate
-			}
 		}
 
 		recentRates := recentSuccessRates(modelBuckets[name], 3)
-		if len(recentRates) == 0 {
-			probeRates := map[int64]counters{}
-			for ts, hour := range probesByModel[name] {
-				probeRates[ts] = counters{
-					requestCount:   hour.TotalCount,
-					successCount:   hour.SuccessCount,
-					totalLatencyMs: hour.TotalLatencyMs,
-				}
-			}
-			recentRates = recentSuccessRates(probeRates, 3)
-		}
 		if len(recentRates) == 0 && upstreamRate != nil {
 			recentRates = []float64{*upstreamRate}
 		}
@@ -570,7 +509,7 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 			AvgTps:             math.Round(avgTps*100) / 100,
 			RecentSuccessRates: recentRates,
 			Source:             source,
-			RecentSeries:       recentSeries(modelBuckets[name], probesByModel[name], upstreamRate, upstreamLatencyByModel[name], recentSeriesPoints),
+			RecentSeries:       recentSeries(modelBuckets[name], upstreamRate, upstreamLatencyByModel[name], recentSeriesPoints),
 			RequestCount:       total.requestCount,
 		})
 	}
@@ -682,21 +621,16 @@ func mergeModelBucket(modelBuckets map[string]map[int64]counters, modelName stri
 const recentSeriesPoints = 24
 
 // recentSeries renders a fixed-length hourly timeline, oldest first. Real
-// request buckets and probe buckets carry their own hour; an hour with neither
-// falls back to the request-derived upstream snapshot when one was observed.
-// A point with no measurement stays empty so the card draws a gap instead of
-// inventing a healthy sample.
-func recentSeries(buckets map[int64]counters, probes map[int64]ProbeBucket, upstreamRate *float64, upstreamLatency *int64, limit int) []ModelRecentPoint {
+// request buckets carry their own hour; an hour without a request falls back
+// to the request-derived upstream snapshot when one was observed. A point with
+// no measurement stays empty so the card draws a gap instead of inventing a
+// healthy sample.
+func recentSeries(buckets map[int64]counters, upstreamRate *float64, upstreamLatency *int64, limit int) []ModelRecentPoint {
 	if limit <= 0 {
 		return nil
 	}
 	newest := int64(0)
 	for ts := range buckets {
-		if ts > newest {
-			newest = ts
-		}
-	}
-	for ts := range probes {
 		if ts > newest {
 			newest = ts
 		}
@@ -721,14 +655,6 @@ func recentSeries(buckets map[int64]counters, probes map[int64]ProbeBucket, upst
 			rate := math.Round(successRate(b)*100) / 100
 			points = append(points, ModelRecentPoint{
 				Ts: ts, LatencyMs: &latency, SuccessRate: &rate, Source: "request",
-			})
-			continue
-		}
-		if p := probes[ts]; p.TotalCount > 0 {
-			latency := p.TotalLatencyMs / p.TotalCount
-			rate := math.Round(float64(p.SuccessCount)/float64(p.TotalCount)*10000) / 100
-			points = append(points, ModelRecentPoint{
-				Ts: ts, LatencyMs: &latency, SuccessRate: &rate, Source: "probe",
 			})
 			continue
 		}

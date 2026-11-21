@@ -32,6 +32,7 @@ export const Route = createFileRoute(
       throw redirect({
         to: '/admin/system-settings/operations/$section',
         params: { section: OPERATIONS_DEFAULT_SECTION },
+        replace: true,
       })
     }
   },
