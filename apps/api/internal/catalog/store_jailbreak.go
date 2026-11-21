@@ -333,15 +333,20 @@ func loadJailbreakSnapshot() *jailbreakSnapshot {
 }
 
 func buildJailbreakSnapshot() (*jailbreakSnapshot, error) {
-	var profiles []JailbreakProfile
-	if err := dbx.DB.Where("enabled = ?", true).Find(&profiles).Error; err != nil {
-		return nil, err
-	}
 	snap := &jailbreakSnapshot{
 		channelRules:      make(map[int][]JailbreakRule),
 		modelRules:        make(map[string][]JailbreakRule),
 		channelModelRules: make(map[int]map[string][]JailbreakRule),
 		expiresAt:         time.Now().Add(jailbreakSnapshotTTL),
+	}
+	// Unit tests exercise the resolver without booting the database; treat an
+	// uninitialised handle as "no rules" instead of panicking.
+	if dbx.DB == nil {
+		return snap, nil
+	}
+	var profiles []JailbreakProfile
+	if err := dbx.DB.Where("enabled = ?", true).Find(&profiles).Error; err != nil {
+		return nil, err
 	}
 	if len(profiles) == 0 {
 		return snap, nil
