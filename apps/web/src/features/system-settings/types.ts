@@ -647,6 +647,9 @@ export type PricingAnalysisChannelWindow = {
   requests: number | null
   cost: number | null
   profit: number | null
+  revenue: number | null
+  subscription_revenue: number | null
+  group_ratio: number | null
 }
 
 export type PricingAnalysisChannel = {
@@ -663,6 +666,8 @@ export type PricingAnalysisChannel = {
   profit: number | null
   margin_pct: number | null
   windows: PricingAnalysisChannelWindow[]
+  subscription_revenue: number | null
+  group_ratio: number | null
 }
 
 export type PricingAnalysisRow = {

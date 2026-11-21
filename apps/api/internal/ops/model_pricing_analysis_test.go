@@ -103,34 +103,34 @@ func TestResolveUpstreamFields(t *testing.T) {
 	}
 
 	// Exact match wins over every fallback.
-	got := resolveUpstreamFields("[套餐]x", sourceModels, nil, map[string]string{"[套餐]x": "mapped"})
+	got := resolveUpstreamFields("[套餐]x", sourceModels, map[string]string{"[套餐]x": "mapped"})
 	require.NotNil(t, got)
 	assert.Equal(t, "exact-bracket", got[field])
 
 	// [套餐] prefix falls back to the bare name.
-	got = resolveUpstreamFields("[套餐]y", map[string]map[string]any{"y": {field: "bare-y"}}, nil, nil)
+	got = resolveUpstreamFields("[套餐]y", map[string]map[string]any{"y": {field: "bare-y"}}, nil)
 	require.NotNil(t, got)
 	assert.Equal(t, "bare-y", got[field])
 
 	// a/ prefix falls back to the bare name.
-	got = resolveUpstreamFields("a/z", map[string]map[string]any{"z": {field: "bare-z"}}, nil, nil)
+	got = resolveUpstreamFields("a/z", map[string]map[string]any{"z": {field: "bare-z"}}, nil)
 	require.NotNil(t, got)
 	assert.Equal(t, "bare-z", got[field])
 
+	// [次] suffix falls back to the bare name.
+	got = resolveUpstreamFields("claude-opus-5[次]", map[string]map[string]any{"claude-opus-5": {field: "bare-call"}}, nil)
+	require.NotNil(t, got)
+	assert.Equal(t, "bare-call", got[field])
+
 	// model_mapping supplies the upstream name when no snapshot name matches.
-	got = resolveUpstreamFields("pkg-gemini", sourceModels, nil, map[string]string{"pkg-gemini": "mapped"})
+	got = resolveUpstreamFields("pkg-gemini", sourceModels, map[string]string{"pkg-gemini": "mapped"})
 	require.NotNil(t, got)
 	assert.Equal(t, "via-mapping", got[field])
 
 	// Empty field maps are treated as misses.
-	assert.Nil(t, resolveUpstreamFields("empty", sourceModels, nil, nil))
+	assert.Nil(t, resolveUpstreamFields("empty", sourceModels, nil))
 
-	// Reference fallback uses the same candidate order.
-	reference := map[string]map[string]any{"x": {field: "reference-x"}}
-	got = resolveUpstreamFields("[套餐]x", nil, reference, nil)
-	require.NotNil(t, got)
-	assert.Equal(t, "reference-x", got[field])
-
-	// Nothing matches -> nil.
-	assert.Nil(t, resolveUpstreamFields("ghost", sourceModels, nil, nil))
+	// Nothing matches -> nil: the channel stays unpriced instead of borrowing
+	// a reference source's prices.
+	assert.Nil(t, resolveUpstreamFields("ghost", sourceModels, nil))
 }

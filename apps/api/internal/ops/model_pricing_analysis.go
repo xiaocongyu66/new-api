@@ -21,9 +21,9 @@ import (
 const (
 	pricingAnalysisDefaultWindow = 131072
 	pricingAnalysisLookbackDays  = 7
-	// referenceSourceName is the snapshot source used as a reference price when
-	// a channel has no snapshot of its own.
-	referenceSourceName = "models.dev"
+	// billingSourceSubscription marks consume logs whose quota was paid from a
+	// subscription balance instead of the wallet.
+	billingSourceSubscription = "subscription"
 	// SQLite caps bind variables at 999 in default builds; 500 leaves room for
 	// the other placeholders in the same statements.
 	pricingAnalysisQueryChunkSize = 500
@@ -95,23 +95,13 @@ func PricingAnalysis(c contract.Context) {
 			localFields[modelName][field] = value
 		}
 	}
-	// Upstream prices are keyed by source (channel) then model. Channels that
-	// have no snapshot of their own fall back to a reference price source
-	// (e.g. the models.dev preset) so the matrix still shows comparable costs.
+	// Upstream prices are keyed by source (channel) then model. A channel with
+	// no snapshot of its own stays unpriced: silently substituting a reference
+	// source (models.dev) attributed another vendor's prices to real channels.
 	sources := upstreamSources(req.Upstreams)
 	snapshotBySource := map[string]map[string]map[string]any{}
-	referenceFields := map[string]map[string]any{}
 	if batch, bySource := latestSnapshotValues(sources); batch > 0 {
 		snapshotBySource = bySource
-	}
-	// The models.dev preset is a shared reference price source, not a channel.
-	// Its snapshot key carries a suffix like "models.dev 价格预设(-101)", so
-	// match by prefix. No arbitrary channel price should be used as reference.
-	for source, byModel := range snapshotBySource {
-		if strings.HasPrefix(source, referenceSourceName) {
-			referenceFields = byModel
-			break
-		}
 	}
 
 	matchedSets := make([][]string, len(models))
@@ -128,6 +118,26 @@ func PricingAnalysis(c contract.Context) {
 			if _, ok := seenMatched[m]; !ok {
 				seenMatched[m] = struct{}{}
 				allMatched = append(allMatched, m)
+			}
+		}
+	}
+
+	// Channel-bound model names that never made it into the plaza models
+	// table (e.g. per-request "[次]" aliases) carry real revenue but would be
+	// invisible, so they get their own rows. Only models with usage in the
+	// range are added, and only when no vendor filter is active (ability rows
+	// have no vendor).
+	covered := make(map[string]struct{}, len(allMatched))
+	for _, m := range allMatched {
+		covered[m] = struct{}{}
+	}
+	var abilityOnlyModels []string
+	if req.Vendor == 0 {
+		for _, ab := range channel.GetEnabledModels() {
+			if _, ok := covered[ab]; !ok {
+				covered[ab] = struct{}{}
+				abilityOnlyModels = append(abilityOnlyModels, ab)
+				allMatched = append(allMatched, ab)
 			}
 		}
 	}
@@ -183,46 +193,12 @@ func PricingAnalysis(c contract.Context) {
 			chEntries := make([]dto.AnalysisChannel, 0, len(chs))
 			for _, ch := range chs {
 				ug := usageMap[[2]any{int64(ch.ChannelID), m}]
-				revenue := float64(ug.Quota) / float64(common.QuotaPerUnit)
-				// Upstream price belongs to the channel, not the model: look it
-				// up under this channel's snapshot source key. Aliases that
-				// differ from the upstream model name are resolved conservatively.
-				sourceKey := channelSourceKey(ch.ChannelName, ch.ChannelID)
-				upFields := resolveUpstreamFields(m, snapshotBySource[sourceKey], referenceFields, ch.ModelMapping)
-				upstreamExpr, _ := modelExpr(upFields)
-				entry := dto.AnalysisChannel{
-					ChannelID:   ch.ChannelID,
-					ChannelName: ch.ChannelName,
-					ChannelType: ch.ChannelType,
-					ModelName:   m,
-					PriceMode:   priceModeFromFields(upstreamExpr, upFields),
-					BillingMode: billingModeFromFields(upFields),
-					Requests:    ug.Requests,
-					Tokens:      ug.Tokens,
-					Revenue:     revenue,
-					Windows:     channelWindows(localFields[m], upFields, windows, ch.ChannelID, m, tierUsageMap),
-				}
-				if upstreamExpr != "" {
-					if cwUsd := evalUsd(upstreamExpr, canonicalWindow); cwUsd != nil && canonicalWindow > 0 {
-						var chCost float64
-						if strings.Contains(upstreamExpr, "fixed(") {
-							chCost = *cwUsd * float64(ug.Requests)
-						} else {
-							unit := *cwUsd / float64(canonicalWindow+canonicalWindow/4)
-							chCost = unit * float64(ug.Tokens)
-						}
-						entry.Cost = &chCost
-						profit := revenue - chCost
-						entry.Profit = &profit
-						if revenue > 0 {
-							margin := profit / revenue * 100
-							entry.MarginPct = &margin
-						}
-						cost += chCost
-						pricedChannels++
-					}
-				}
+				entry, chCost, priced := buildChannelEntry(m, ch, ug, localFields, snapshotBySource, windows, canonicalWindow, tierUsageMap)
 				chEntries = append(chEntries, entry)
+				if priced {
+					cost += chCost
+					pricedChannels++
+				}
 				requests += ug.Requests
 				tokens += ug.Tokens
 				quota += ug.Quota
@@ -252,6 +228,56 @@ func PricingAnalysis(c contract.Context) {
 
 		rows = append(rows, row)
 	}
+
+	// Ability-only rows: distinct channel-bound names with usage in range but
+	// no plaza models-table entry (per-request "[次]" aliases and friends).
+	for _, name := range abilityOnlyModels {
+		var requests, tokens, quota int64
+		var cost float64
+		pricedChannels := 0
+		chEntries := make([]dto.AnalysisChannel, 0)
+		for _, ch := range bchans[name] {
+			ug := usageMap[[2]any{int64(ch.ChannelID), name}]
+			if ug.Requests == 0 && ug.Tokens == 0 {
+				continue
+			}
+			entry, chCost, priced := buildChannelEntry(name, ch, ug, localFields, snapshotBySource, windows, canonicalWindow, tierUsageMap)
+			chEntries = append(chEntries, entry)
+			if priced {
+				cost += chCost
+				pricedChannels++
+			}
+			requests += ug.Requests
+			tokens += ug.Tokens
+			quota += ug.Quota
+		}
+		if len(chEntries) == 0 {
+			continue
+		}
+		row := dto.AnalysisRow{
+			Alias:        name,
+			VendorID:     0,
+			VendorName:   vendorName[0],
+			NameRule:     channel.NameRuleExact,
+			MatchedCount: 1,
+			PriceModel:   name,
+			Requests:     requests,
+			Tokens:       tokens,
+			Revenue:      float64(quota) / float64(common.QuotaPerUnit),
+			Channels:     chEntries,
+		}
+		if pricedChannels == len(chEntries) {
+			row.Cost = &cost
+			profit := row.Revenue - cost
+			row.Profit = &profit
+			if row.Revenue > 0 {
+				margin := profit / row.Revenue * 100
+				row.MarginPct = &margin
+			}
+		}
+		rows = append(rows, row)
+	}
+
 	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": dto.PricingAnalysisData{
 		Windows: windows,
 		Vendors: allVendorsDTO(vendorRows),
@@ -259,9 +285,102 @@ func PricingAnalysis(c contract.Context) {
 	}})
 }
 
+// channelLogStats is the exact per-log pricing result for one bound
+// (channel, model) pair across every requested context window.
+type channelLogStats struct {
+	Cost        float64 // upstream cost, summed over each log's real token counts
+	SubQuota    int64   // quota paid from subscription balances
+	TokenWeight float64 // Σ (prompt + completion) across logs
+	GroupSum    float64 // Σ tokens × group ratio, for the token-weighted mean
+}
+
+// aggregateChannelLogs prices every consume log recorded for one (channel,
+// model) with the upstream expression. hasLogs=false when the range holds no
+// samples, so callers can fall back to the representative-window estimate.
+func aggregateChannelLogs(expr string, tier map[[3]any][]pricingSample, channelID int, modelName string, windows []int) (channelLogStats, bool) {
+	var st channelLogStats
+	found := false
+	for _, w := range windows {
+		for _, s := range tier[[3]any{int64(channelID), modelName, w}] {
+			found = true
+			if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion); usd != nil {
+				st.Cost += *usd
+			}
+			if s.BillingSource == billingSourceSubscription {
+				st.SubQuota += s.Quota
+			}
+			tokens := float64(s.Prompt + s.Completion)
+			st.TokenWeight += tokens
+			st.GroupSum += tokens * s.GroupRatio
+		}
+	}
+	return st, found
+}
+
+// buildChannelEntry assembles the analysis entry for one bound (channel,
+// model) pair: revenue from usage aggregates, upstream price from the
+// channel's own snapshot, and cost from exact per-log pricing with a
+// representative-window estimate fallback when the range has no logs.
+// priced=false when the channel carries no upstream price, so callers never
+// mix borrowed reference prices into their cost sums.
+func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localFields map[string]map[string]any, snapshotBySource map[string]map[string]map[string]any, windows []int, canonicalWindow int, tierUsageMap map[[3]any][]pricingSample) (dto.AnalysisChannel, float64, bool) {
+	revenue := float64(ug.Quota) / float64(common.QuotaPerUnit)
+	sourceKey := channelSourceKey(ch.ChannelName, ch.ChannelID)
+	upFields := resolveUpstreamFields(modelName, snapshotBySource[sourceKey], ch.ModelMapping)
+	upstreamExpr, _ := modelExpr(upFields)
+	entry := dto.AnalysisChannel{
+		ChannelID:   ch.ChannelID,
+		ChannelName: ch.ChannelName,
+		ChannelType: ch.ChannelType,
+		ModelName:   modelName,
+		PriceMode:   priceModeFromFields(upstreamExpr, upFields),
+		BillingMode: billingModeFromFields(upFields),
+		Requests:    ug.Requests,
+		Tokens:      ug.Tokens,
+		Revenue:     revenue,
+		Windows:     channelWindows(localFields[modelName], upFields, windows, ch.ChannelID, modelName, tierUsageMap),
+	}
+	if upstreamExpr == "" {
+		return entry, 0, false
+	}
+	var chCost float64
+	logs, hasLogs := aggregateChannelLogs(upstreamExpr, tierUsageMap, ch.ChannelID, modelName, windows)
+	if hasLogs {
+		chCost = logs.Cost
+		subRevenue := float64(logs.SubQuota) / float64(common.QuotaPerUnit)
+		entry.SubscriptionRevenue = &subRevenue
+		if logs.TokenWeight > 0 {
+			gr := logs.GroupSum / logs.TokenWeight
+			entry.GroupRatio = &gr
+		}
+	} else if cwUsd := evalUsd(upstreamExpr, canonicalWindow); cwUsd != nil && canonicalWindow > 0 {
+		// No consume logs in range: fixed prices scale with request count,
+		// per-token prices with total tokens under the representative
+		// 1.25x prompt/completion mix.
+		if strings.Contains(upstreamExpr, "fixed(") {
+			chCost = *cwUsd * float64(ug.Requests)
+		} else {
+			unit := *cwUsd / float64(canonicalWindow+canonicalWindow/4)
+			chCost = unit * float64(ug.Tokens)
+		}
+	} else {
+		return entry, 0, false
+	}
+	entry.Cost = &chCost
+	profit := revenue - chCost
+	entry.Profit = &profit
+	if revenue > 0 {
+		margin := profit / revenue * 100
+		entry.MarginPct = &margin
+	}
+	return entry, chCost, true
+}
+
 // channelWindows returns local vs upstream price at each context window for a
 // bound channel's model. tier holds individual consume-log samples keyed by
-// (channel/model/window); their real token counts drive per-window cost.
+// (channel/model/window); their real token counts drive per-window revenue,
+// cost and the token-weighted group ratio, so the money columns reflect the
+// actual request mix instead of the representative window.
 func channelWindows(localFields, upstreamFields map[string]any, windows []int, channelID int, modelName string, tier map[[3]any][]pricingSample) []dto.AnalysisChannelWindow {
 	localExpr, _ := modelExpr(localFields)
 	upstreamExpr, _ := modelExpr(upstreamFields)
@@ -286,13 +405,33 @@ func channelWindows(localFields, upstreamFields map[string]any, windows []int, c
 			entry.Requests = &requests
 			cost := windowCostUSD(upstreamExpr, samples)
 			entry.Cost = &cost
-			var quota int64
+			var quota, subQuota int64
+			var tokenWeight, groupWeighted float64
 			for _, s := range samples {
 				quota += s.Quota
+				if s.BillingSource == billingSourceSubscription {
+					subQuota += s.Quota
+				}
+				tokens := float64(s.Prompt + s.Completion)
+				tokenWeight += tokens
+				groupWeighted += tokens * s.GroupRatio
 			}
 			revenue := float64(quota) / float64(common.QuotaPerUnit)
+			entry.Revenue = &revenue
+			subRevenue := float64(subQuota) / float64(common.QuotaPerUnit)
+			entry.SubscriptionRevenue = &subRevenue
+			if tokenWeight > 0 {
+				gr := groupWeighted / tokenWeight
+				entry.GroupRatio = &gr
+			}
 			profit := revenue - cost
 			entry.Profit = &profit
+			// Real per-window margin replaces the modeled unit-price margin
+			// whenever actual usage exists.
+			if revenue > 0 {
+				margin := profit / revenue * 100
+				entry.MarginPct = &margin
+			}
 		}
 		out = append(out, entry)
 	}
@@ -327,7 +466,8 @@ func channelSourceKey(name string, id int) string {
 
 // upstreamAliasCandidates returns the ordered fallback names for a plaza alias
 // whose upstream snapshot name may differ from the local name. Exact names win;
-// only misses strip known prefixes ([套餐], a/) and consult model_mapping.
+// only misses strip known prefixes/suffixes ([套餐], a/, [次]) and consult
+// model_mapping.
 func upstreamAliasCandidates(modelName string, mapping map[string]string) []string {
 	candidates := []string{modelName}
 	if name := strings.TrimSpace(strings.TrimPrefix(modelName, "[套餐]")); name != "" && name != modelName {
@@ -336,23 +476,23 @@ func upstreamAliasCandidates(modelName string, mapping map[string]string) []stri
 	if name := strings.TrimSpace(strings.TrimPrefix(modelName, "a/")); name != "" && name != modelName {
 		candidates = append(candidates, name)
 	}
+	if name := strings.TrimSpace(strings.TrimSuffix(modelName, "[次]")); name != "" && name != modelName {
+		candidates = append(candidates, name)
+	}
 	if mapped := mapping[modelName]; mapped != "" {
 		candidates = append(candidates, mapped)
 	}
 	return candidates
 }
 
-// resolveUpstreamFields maps a plaza alias to its upstream price fields.
-// Candidates are tried in order against the channel's snapshot model map, then
-// against the shared reference map; only the first candidate with non-empty
-// fields wins, so exact lookups keep working and only misses use fallbacks.
-func resolveUpstreamFields(modelName string, sourceModels, referenceModels map[string]map[string]any, mapping map[string]string) map[string]any {
-	candidates := upstreamAliasCandidates(modelName, mapping)
-	for _, models := range []map[string]map[string]any{sourceModels, referenceModels} {
-		for _, name := range candidates {
-			if fields := models[name]; len(fields) > 0 {
-				return fields
-			}
+// resolveUpstreamFields maps a plaza alias to its upstream price fields from
+// the channel's own snapshot. Candidates are tried in order and the first
+// non-empty field map wins; a miss returns nil so the UI can show "no
+// upstream price" instead of borrowing another source's prices.
+func resolveUpstreamFields(modelName string, sourceModels map[string]map[string]any, mapping map[string]string) map[string]any {
+	for _, name := range upstreamAliasCandidates(modelName, mapping) {
+		if fields := sourceModels[name]; len(fields) > 0 {
+			return fields
 		}
 	}
 	return nil
@@ -879,13 +1019,13 @@ func chunkStrings(items []string, size int) [][]string {
 }
 
 // pricingSample is one consume log, retained with the exact token counts that
-// produced its charge. Tier is the matched_tier recorded in the log's `other`
-// JSON; the expression itself reselects the tier via len = Prompt.
+// produced its charge plus the payment split and group ratio that scaled it.
 type pricingSample struct {
-	Prompt     int
-	Completion int
-	Quota      int64
-	Tier       string
+	Prompt        int
+	Completion    int
+	Quota         int64
+	GroupRatio    float64
+	BillingSource string
 }
 
 // tierUsageByWindow buckets raw consume logs into the requested prompt-token
@@ -917,16 +1057,22 @@ func tierUsageByWindow(modelNames []string, windows []int, start, end int64) map
 		}
 		for _, r := range rows {
 			var meta map[string]any
-			tier := ""
-			if r.Other != "" && common.Unmarshal([]byte(r.Other), &meta) == nil {
-				tier, _ = meta["matched_tier"].(string)
+			if r.Other != "" {
+				_ = common.Unmarshal([]byte(r.Other), &meta)
 			}
+			// Legacy logs carry no group_ratio; treat them as ratio 1.
+			groupRatio := 1.0
+			if v, ok := meta["group_ratio"].(float64); ok {
+				groupRatio = v
+			}
+			billingSource, _ := meta["billing_source"].(string)
 			key := [3]any{r.ChannelID, r.ModelName, windows[sampleBucket(r.PromptTokens, windows)]}
 			out[key] = append(out[key], pricingSample{
-				Prompt:     r.PromptTokens,
-				Completion: r.CompletionTokens,
-				Quota:      r.Quota,
-				Tier:       tier,
+				Prompt:        r.PromptTokens,
+				Completion:    r.CompletionTokens,
+				Quota:         r.Quota,
+				GroupRatio:    groupRatio,
+				BillingSource: billingSource,
 			})
 		}
 	}

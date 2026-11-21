@@ -24,7 +24,6 @@ import { cn } from '@/lib/utils'
 import type {
   PricingAnalysisChannel,
   PricingAnalysisRow,
-  PricingAnalysisChannelWindow,
 } from '../types'
 
 type Props = {
@@ -102,8 +101,11 @@ function valueTone(value: number | null | undefined): string {
 function modeLabel(mode: string, t: (key: string) => string): string {
   switch (mode) {
     case 'per-token':
+    case 'per_token':
+    case 'ratio':
       return t('Per token')
     case 'per-request':
+    case 'per_call':
       return t('Per request')
     case 'tiered_expr':
       return t('Tiered expression')
@@ -111,10 +113,6 @@ function modeLabel(mode: string, t: (key: string) => string): string {
       return t('Context tiers (per token)')
     case 'context_tier_per_call':
       return t('Context tiers (per request)')
-    case 'per_call':
-      return t('Per request')
-    case 'per_token':
-      return t('Per token')
     case 'per_call_tiered':
       return t('Context tiers (per request)')
     case 'per_token_tiered':
@@ -124,14 +122,39 @@ function modeLabel(mode: string, t: (key: string) => string): string {
   }
 }
 
-type Dimension = {
-  key: string
-  label: string
-  window?: PricingAnalysisChannelWindow
-  // Non-tiered channels reuse one canonical window whose cost/request/profit
-  // figures are channel-wide totals; showing them per row duplicates the
-  // Total row, so those metrics are suppressed for that single row.
-  showMetrics: boolean
+// A channel with neither price signal has no snapshot of its own: its cost is
+// unknown, not zero.
+function hasUpstreamPrice(channel: PricingAnalysisChannel): boolean {
+  return channel.price_mode !== '' || channel.billing_mode !== ''
+}
+
+// Token-weighted mean group ratio across the channel's consume logs; the
+// money columns already carry it, this explains the effective local price.
+function formatGroupRatio(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—'
+  return `×${value.toFixed(2)}`
+}
+
+// Revenue cell with the subscription-paid share as a sub-line: the total is
+// the quota charged, the sub-line how much of it drew on subscriptions.
+function RevenueCell({
+  revenue,
+  subscription,
+}: {
+  revenue: number | null | undefined
+  subscription: number | null | undefined
+}) {
+  const { t } = useTranslation()
+  return (
+    <td className={CELL_NUM}>
+      {formatMoney(revenue)}
+      {subscription != null && subscription > 0 && (
+        <div className='text-muted-foreground text-[8px] whitespace-nowrap'>
+          {t('Subscription')} {formatMoney(subscription)}
+        </div>
+      )}
+    </td>
+  )
 }
 
 function ChannelTable({
@@ -141,26 +164,12 @@ function ChannelTable({
   channel: PricingAnalysisChannel
   t: (key: string) => string
 }) {
+  const priced = hasUpstreamPrice(channel)
   const hasContextTiers =
     channel.price_mode === 'per_token_tiered' ||
     channel.price_mode === 'per_call_tiered'
   const canonicalWindow =
     channel.windows.find((w) => w.context === 131072) ?? channel.windows[0]
-  const dimensions: Dimension[] = hasContextTiers
-    ? channel.windows.map((w) => ({
-        key: String(w.context),
-        label: `${t('Context')} ${formatContext(w.context)}`,
-        window: w,
-        showMetrics: true,
-      }))
-    : [
-        {
-          key: channel.price_mode || 'single',
-          label: modeLabel(channel.billing_mode || channel.price_mode, t),
-          window: canonicalWindow,
-          showMetrics: false,
-        },
-      ]
 
   return (
     <div className='overflow-hidden rounded-[6px] border-x border-t'>
@@ -169,69 +178,103 @@ function ChannelTable({
           <span className='truncate text-sm font-semibold'>{channel.channel_name}</span>
           <span className='text-muted-foreground text-[11px]'>{channel.model_name}</span>
         </div>
-        <span className='text-muted-foreground shrink-0 text-[10px]'>
-          {modeLabel(channel.billing_mode || channel.price_mode, t)}
-        </span>
+        {priced ? (
+          <span className='text-muted-foreground shrink-0 text-[10px]'>
+            {modeLabel(channel.billing_mode || channel.price_mode, t)}
+          </span>
+        ) : (
+          <span className='shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400'>
+            {t('No upstream price')}
+          </span>
+        )}
       </div>
 
       <table className='w-full table-fixed border-collapse text-[10px]'>
         <colgroup>
-          <col className='w-[14%]' />
-          <col className='w-[14.3%]' />
-          <col className='w-[14.3%]' />
-          <col className='w-[14.3%]' />
-          <col className='w-[14.3%]' />
-          <col className='w-[14.3%]' />
-          <col className='w-[14.5%]' />
+          <col className='w-[16%]' />
+          <col className='w-[11%]' />
+          <col className='w-[11%]' />
+          <col className='w-[9%]' />
+          <col className='w-[9%]' />
+          <col className='w-[16%]' />
+          <col className='w-[9%]' />
+          <col className='w-[10%]' />
+          <col className='w-[9%]' />
         </colgroup>
-          <thead>
-            <tr>
-              <th className={HEAD}>{t('Billing')}</th>
-              <th className={HEAD_NUM}>{t('Local')}</th>
-              <th className={HEAD_NUM}>{t('Upstream')}</th>
-              <th className={HEAD_NUM}>{t('Cost')}</th>
-              <th className={HEAD_NUM}>{t('Req')}</th>
-              <th className={HEAD_NUM}>{t('Profit')}</th>
-              <th className={HEAD_NUM}>{t('Margin %')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dimensions.map((d) => (
-              <tr key={d.key}>
-                <td className={CELL}>{d.label}</td>
-                <td className={CELL_NUM}>{formatMoney(d.window?.local)}</td>
-                <td className={CELL_NUM}>{formatMoney(d.window?.upstream)}</td>
-                <td className={CELL_NUM}>
-                  {d.showMetrics ? formatMoney(d.window?.cost) : '—'}
-                </td>
-                <td className={CELL_NUM}>
-                  {!d.showMetrics || d.window?.requests == null
-                    ? '—'
-                    : formatInteger(d.window.requests)}
-                </td>
-                <td className={cn(CELL_NUM, valueTone(d.window?.profit))}>
-                  {d.showMetrics ? formatMoney(d.window?.profit) : '—'}
-                </td>
-                <td className={cn(CELL_NUM, valueTone(d.window?.margin_pct))}>
-                  {d.showMetrics ? formatPercent(d.window?.margin_pct) : '—'}
-                </td>
-              </tr>
-            ))}
-            <tr className='bg-muted/30 font-medium'>
-              <td className={CELL}>{t('Total')}</td>
-              <td className={CELL_NUM}>—</td>
-              <td className={CELL_NUM}>—</td>
-              <td className={CELL_NUM}>{formatMoney(channel.cost)}</td>
-              <td className={CELL_NUM}>{formatInteger(channel.requests)}</td>
-              <td className={cn(CELL_NUM, valueTone(channel.profit))}>
-                {formatMoney(channel.profit)}
-              </td>
-              <td className={cn(CELL_NUM, valueTone(channel.margin_pct))}>
-                {formatPercent(channel.margin_pct)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <thead>
+          <tr>
+            <th className={HEAD}>{priced ? t('Billing') : t('Context')}</th>
+            <th className={HEAD_NUM}>{t('Local')}</th>
+            <th className={HEAD_NUM}>{t('Upstream')}</th>
+            <th className={HEAD_NUM}>{t('Group ratio')}</th>
+            <th className={HEAD_NUM}>{t('Req')}</th>
+            <th className={HEAD_NUM}>{t('Revenue')}</th>
+            <th className={HEAD_NUM}>{t('Cost')}</th>
+            <th className={HEAD_NUM}>{t('Profit')}</th>
+            <th className={HEAD_NUM}>{t('Margin %')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {priced && hasContextTiers
+            ? channel.windows.map((w) => (
+                <tr key={w.context}>
+                  <td className={CELL}>
+                    {t('Context')} {formatContext(w.context)}
+                  </td>
+                  <td className={CELL_NUM}>{formatMoney(w.local)}</td>
+                  <td className={CELL_NUM}>{formatMoney(w.upstream)}</td>
+                  <td className={CELL_NUM}>{formatGroupRatio(w.group_ratio)}</td>
+                  <td className={CELL_NUM}>
+                    {w.requests == null ? '—' : formatInteger(w.requests)}
+                  </td>
+                  <RevenueCell
+                    revenue={w.revenue}
+                    subscription={w.subscription_revenue}
+                  />
+                  <td className={CELL_NUM}>{formatMoney(w.cost)}</td>
+                  <td className={cn(CELL_NUM, valueTone(w.profit))}>
+                    {formatMoney(w.profit)}
+                  </td>
+                  <td className={cn(CELL_NUM, valueTone(w.margin_pct))}>
+                    {formatPercent(w.margin_pct)}
+                  </td>
+                </tr>
+              ))
+            : priced && (
+                <tr>
+                  <td className={CELL}>
+                    {modeLabel(channel.billing_mode || channel.price_mode, t)}
+                  </td>
+                  <td className={CELL_NUM}>{formatMoney(canonicalWindow?.local)}</td>
+                  <td className={CELL_NUM}>{formatMoney(canonicalWindow?.upstream)}</td>
+                  <td className={CELL_NUM}>{formatGroupRatio(channel.group_ratio)}</td>
+                  <td className={CELL_NUM}>—</td>
+                  <td className={CELL_NUM}>—</td>
+                  <td className={CELL_NUM}>—</td>
+                  <td className={CELL_NUM}>—</td>
+                  <td className={CELL_NUM}>—</td>
+                </tr>
+              )}
+          <tr className='bg-muted/30 font-medium'>
+            <td className={CELL}>{t('Total')}</td>
+            <td className={CELL_NUM}>—</td>
+            <td className={CELL_NUM}>—</td>
+            <td className={CELL_NUM}>{formatGroupRatio(channel.group_ratio)}</td>
+            <td className={CELL_NUM}>{formatInteger(channel.requests)}</td>
+            <RevenueCell
+              revenue={channel.revenue}
+              subscription={channel.subscription_revenue}
+            />
+            <td className={CELL_NUM}>{formatMoney(channel.cost)}</td>
+            <td className={cn(CELL_NUM, valueTone(channel.profit))}>
+              {formatMoney(channel.profit)}
+            </td>
+            <td className={cn(CELL_NUM, valueTone(channel.margin_pct))}>
+              {formatPercent(channel.margin_pct)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -290,9 +333,9 @@ export function PricingAnalysisDialog({ row, onOpenChange }: Props) {
             <p className='text-muted-foreground text-sm'>{t('No analysis data')}</p>
           ) : (
             <div className='space-y-3'>
-              {row.channels.map((channel, index) => (
+              {row.channels.map((channel) => (
                 <ChannelTable
-                  key={`${channel.channel_id}-${channel.model_name}-${index}`}
+                  key={`${channel.channel_id}-${channel.model_name}`}
                   channel={channel}
                   t={t}
                 />

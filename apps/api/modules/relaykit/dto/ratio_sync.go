@@ -67,6 +67,12 @@ type AnalysisChannelWindow struct {
 	Requests *int64   `json:"requests"`
 	Cost     *float64 `json:"cost"`
 	Profit   *float64 `json:"profit"`
+	// Revenue is the quota actually charged (group ratio included); the
+	// subscription share and the token-weighted mean group ratio explain how
+	// that charge was composed. Nil when no log carries that tier.
+	Revenue             *float64 `json:"revenue"`
+	SubscriptionRevenue *float64 `json:"subscription_revenue"`
+	GroupRatio          *float64 `json:"group_ratio"`
 }
 
 // AnalysisChannel is one bound (channel, model) entry within an alias row.
@@ -84,6 +90,10 @@ type AnalysisChannel struct {
 	Profit      *float64                `json:"profit"`
 	MarginPct   *float64                `json:"margin_pct"`
 	Windows     []AnalysisChannelWindow `json:"windows"`
+	// Channel-wide subscription share and token-weighted group ratio from the
+	// consume logs in range. Nil when no logs exist.
+	SubscriptionRevenue *float64 `json:"subscription_revenue"`
+	GroupRatio          *float64 `json:"group_ratio"`
 }
 
 // AnalysisRow is one plaza alias row in the analysis result.

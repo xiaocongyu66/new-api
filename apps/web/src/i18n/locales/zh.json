@@ -6411,6 +6411,8 @@
     "Upstream@128K": "上游@128K",
     "Fluctuation alerts": "波动提醒",
     "Loading analysis": "加载分析",
+    "No upstream price": "无上游报价",
+    "Group ratio": "分组倍率",
     "No analysis data": "暂无分析数据",
     "Failed to load analysis": "分析加载失败",
     "Time range": "时间范围",
