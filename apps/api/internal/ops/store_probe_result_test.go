@@ -4,18 +4,20 @@ import (
 	"context"
 	"testing"
 
-	"github.com/glebarez/sqlite"
-	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
-
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/dbinfra"
+	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func withProbeDB(t *testing.T) {
 	t.Helper()
 	previousDB := dbx.DB
+	dbinfra.InitDialectColumns()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&channelpkg.Ability{}, &channelpkg.Channel{}, &ChannelProbeResult{}))
@@ -84,4 +86,62 @@ func TestLoadProbeStats24h(t *testing.T) {
 	empty, err := LoadProbeStats24h(context.Background(), 2)
 	require.NoError(t, err)
 	require.Empty(t, empty)
+}
+
+// withHealthDB extends the probe fixture with the persisted route health and
+// route tables the upstream loader joins against.
+func withHealthDB(t *testing.T) {
+	t.Helper()
+	withProbeDB(t)
+	require.NoError(t, dbx.DB.AutoMigrate(
+		&channelpkg.ChannelModelHealth{},
+		&channelpkg.ChannelModelRoute{},
+	))
+}
+
+func TestLoadUpstreamHealthObservedRoutableOnly(t *testing.T) {
+	withHealthDB(t)
+	now := common.GetTimestamp()
+	observedMs := int64(now) * 1000
+
+	require.NoError(t, dbx.DB.Create(&channelpkg.Channel{
+		Id: 20, Type: 1, Key: "sk-health", Name: "health",
+		Models: "routable", Status: common.ChannelStatusEnabled, CreatedTime: now,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.Ability{
+		Group: "default", Model: "routable", ChannelId: 20, Enabled: true,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
+		Id: 1, PublicModelAlias: "routable", ChannelId: 20, KeyIndex: 0,
+		UpstreamModel: "routable", StaticWeight: 30, Enabled: true,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelHealth{
+		ChannelId: 20, KeyIndex: 0, Model: "routable", Version: 1,
+		EwmaScore: 0.6, LatencyEwmaMs: 320, LatencyUpdatedAtMs: observedMs,
+		ScoreUpdatedAtMs: observedMs,
+	}).Error)
+
+	// A never-observed row and a disabled route must not be reported.
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelHealth{
+		ChannelId: 20, KeyIndex: 0, Model: "unobserved", Version: 1,
+		EwmaScore: 1.0,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
+		Id: 2, PublicModelAlias: "disabled-route", ChannelId: 20, KeyIndex: 0,
+		UpstreamModel: "disabled-route", Enabled: false,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelHealth{
+		ChannelId: 20, KeyIndex: 0, Model: "disabled-route", Version: 1,
+		EwmaScore: 0.1, ScoreUpdatedAtMs: observedMs,
+	}).Error)
+
+	points, err := LoadUpstreamHealth(context.Background(), now-24*3600, now, []string{"default"})
+	require.NoError(t, err)
+	require.Len(t, points, 1)
+	assert.Equal(t, "routable", points[0].Model)
+	assert.Equal(t, 20, points[0].ChannelID)
+	assert.InDelta(t, 60, points[0].Rate, 0.001)
+	assert.Equal(t, int64(320), points[0].LatencyMs)
+	assert.Equal(t, now, points[0].ObservedAt)
+	assert.Equal(t, float64(30), points[0].Weight)
 }

@@ -16,31 +16,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckSquare, RefreshCcw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 
+import { ArrowUp, RefreshCcw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
+  fetchPricingAnalysis,
   fetchUpstreamRatios,
+  getPriceFluctuations,
   getUpstreamChannels,
-  updateSystemOption,
 } from '../api'
 import type {
-  DifferencesMap,
-  RatioType,
+  PriceFluctuationChange,
+  PricingAnalysisData,
+  PricingAnalysisRow,
+  PricingAnalysisRequest,
   UpstreamChannel,
   UpstreamConfig,
 } from '../types'
+import { PricingAnalysisDialog } from './pricing-analysis-dialog'
+import { PricingAnalysisTable } from './pricing-analysis-table'
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { ChannelSelectorDialog } from './channel-selector-dialog'
-import {
-  ConflictConfirmDialog,
-  type ConflictItem,
-} from './conflict-confirm-dialog'
 import {
   DEFAULT_ENDPOINT,
   MODELS_DEV_PRESET_ENDPOINT,
@@ -50,39 +53,6 @@ import {
   OPENROUTER_CHANNEL_TYPE,
   OPENROUTER_ENDPOINT,
 } from './constants'
-import {
-  NUMERIC_SYNC_FIELDS,
-  RATIO_SYNC_FIELDS,
-  applyResolutionRemovalPlan,
-  applyResolutionSelection,
-  applyResolutionSelections,
-  deleteResolutionField,
-  type ResolutionRemovalPlan,
-  type ResolutionSelection,
-  type ResolutionsMap,
-} from './upstream-ratio-sync-helpers'
-import { UpstreamRatioSyncTable } from './upstream-ratio-sync-table'
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type UpstreamRatioSyncProps = {
-  modelRatios: {
-    ModelPrice: string
-    ModelRatio: string
-    CompletionRatio: string
-    CacheRatio: string
-    CreateCacheRatio: string
-    ImageRatio: string
-    AudioRatio: string
-    AudioCompletionRatio: string
-    'billing_setting.billing_mode': string
-    'billing_setting.billing_expr': string
-    'billing_setting.billing_context_tier'?: string
-    'billing_setting.billing_context_tier_per_call'?: string
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,57 +67,110 @@ function getDefaultEndpointForChannel(channel: UpstreamChannel): string {
   if (channel.type === OPENROUTER_CHANNEL_TYPE) return OPENROUTER_ENDPOINT
   return DEFAULT_ENDPOINT
 }
+const ANALYSIS_CACHE_KEY = 'pricing-analysis-cache-v1'
+const ANALYSIS_REFRESH_MS = 5 * 60 * 1000
 
-function optionKeyBySyncField(ratioType: string): string {
-  const explicit: Record<string, string> = {
-    billing_mode: 'billing_setting.billing_mode',
-    billing_expr: 'billing_setting.billing_expr',
-  }
-  if (explicit[ratioType]) return explicit[ratioType]
-  return ratioType
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('')
+type AnalysisSignature = {
+  vendor: number
+  days: number
+  threshold: number
+  channelIds: number[]
 }
 
-function parseJsonRecord<T>(raw: string | undefined | null): Record<string, T> {
+type CachedAnalysis = {
+  data: PricingAnalysisData
+  changes: PriceFluctuationChange[]
+  savedAt: number
+  signature: AnalysisSignature
+}
+
+function readCachedAnalysis(): CachedAnalysis | null {
   try {
-    return JSON.parse(raw || '{}') as Record<string, T>
+    const raw = sessionStorage.getItem(ANALYSIS_CACHE_KEY)
+    if (!raw) return null
+    const cached = JSON.parse(raw) as CachedAnalysis
+    if (!cached.data || !Array.isArray(cached.data.rows)) return null
+    if (!Array.isArray(cached.changes) || typeof cached.savedAt !== 'number') {
+      return null
+    }
+    if (
+      !cached.signature ||
+      typeof cached.signature.vendor !== 'number' ||
+      !Array.isArray(cached.signature.channelIds)
+    ) {
+      return null
+    }
+    return cached
   } catch {
-    return {}
+    return null
   }
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
+export function UpstreamRatioSync() {
   const { t } = useTranslation()
-  const queryClient = useQueryClient()
 
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
-  const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
   const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([])
   const [channelEndpoints, setChannelEndpoints] = useState<
     Record<number, string>
   >({})
-  const [differences, setDifferences] = useState<DifferencesMap>({})
-  const [resolutions, setResolutions] = useState<ResolutionsMap>({})
-  const [conflictItems, setConflictItems] = useState<ConflictItem[]>([])
-  const [confirmLoading, setConfirmLoading] = useState(false)
 
-  const { data: channelsData } = useQuery({
+  const [analysisData, setAnalysisData] = useState<PricingAnalysisData | null>(
+    () => readCachedAnalysis()?.data ?? null
+  )
+  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [fluctuationChanges, setFluctuationChanges] = useState<PriceFluctuationChange[]>(
+    () => readCachedAnalysis()?.changes ?? []
+  )
+  const [analysisVendor, setAnalysisVendor] = useState<number>(0)
+  const [analysisDays, setAnalysisDays] = useState<number>(30)
+  const [analysisThreshold, setAnalysisThreshold] = useState<number>(10)
+  const [selectedAnalysisRow, setSelectedAnalysisRow] = useState<PricingAnalysisRow | null>(null)
+  const analysisLoadedRef = useRef(false)
+  const lastFiltersRef = useRef({
+    vendor: analysisVendor,
+    days: analysisDays,
+    threshold: analysisThreshold,
+  })
+
+  const {
+    data: channelsData,
+    isError: channelsError,
+  } = useQuery({
     queryKey: ['upstream-channels'],
     queryFn: getUpstreamChannels,
-    enabled: channelDialogOpen,
   })
+
+  useEffect(() => {
+    // A silent channel-query failure would leave the page permanently empty
+    // with no analysis fetch, so surface it at least once.
+    if (channelsError) toast.error(t('Failed to load channels'))
+  }, [channelsError, t])
+
 
   // Memoize the channels list so the effect below only re-runs when the query
   // data actually changes, instead of on every render (the `|| []` fallback
   // would otherwise produce a new array reference each render).
   const channels = useMemo(() => channelsData?.data ?? [], [channelsData?.data])
 
+
+  // IDs of the channels the current analysis is actually based on; used in
+  // the cache signature so switching channels invalidates cached results.
+  const effectiveChannelIds = useMemo(() => {
+    const selected = channels.filter((ch) => selectedChannelIds.includes(ch.id))
+    const list =
+      selected.length > 0
+        ? selected
+        : channels.filter((ch) => ch.id === MODELS_DEV_PRESET_ID)
+    return list.map((ch) => ch.id).sort((a, b) => a - b)
+  }, [channels, selectedChannelIds])
   useEffect(() => {
     if (channels.length === 0) return
     setChannelEndpoints((prev) => {
@@ -171,7 +194,7 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
         return
       }
 
-      const { differences: diffs, test_results } = data.data
+      const { test_results } = data.data
 
       const errorResults = test_results.filter((r) => r.status === 'error')
       if (errorResults.length > 0) {
@@ -181,51 +204,17 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
         toast.warning(t('Some channels failed: {{errorMsg}}', { errorMsg }))
       }
 
-      setDifferences(diffs)
-      setResolutions({})
+      toast.success(t('Upstream prices fetched successfully'))
 
-      if (Object.keys(diffs).length === 0) {
-        toast.success(t('No price differences found'))
-      } else {
-        toast.success(t('Upstream prices fetched successfully'))
-      }
+      // Channel selection changed: refresh the analysis so costs/profits
+      // reflect the newly selected upstreams.
+      void handleRefreshAnalysis()
     },
     onError: (error: Error) => {
       toast.error(error.message || t('Failed to fetch upstream prices'))
     },
   })
 
-  const { mutate: syncMutate, isPending: isSyncPending } = useMutation({
-    mutationFn: async (updates: Array<{ key: string; value: string }>) => {
-      for (const update of updates) {
-        await updateSystemOption(update)
-      }
-    },
-    onSuccess: () => {
-      toast.success(t('Prices synced successfully'))
-      queryClient.invalidateQueries({ queryKey: ['system-options'] })
-
-      setDifferences((prevDiffs) => {
-        const newDiffs = { ...prevDiffs }
-        Object.entries(resolutions).forEach(([model, ratios]) => {
-          Object.keys(ratios).forEach((ratioType) => {
-            if (newDiffs[model]?.[ratioType as RatioType]) {
-              delete newDiffs[model][ratioType as RatioType]
-              if (Object.keys(newDiffs[model]).length === 0) {
-                delete newDiffs[model]
-              }
-            }
-          })
-        })
-        return newDiffs
-      })
-
-      setResolutions({})
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || t('Failed to sync prices'))
-    },
-  })
 
   const handleOpenChannelDialog = () => {
     setChannelDialogOpen(true)
@@ -251,231 +240,165 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
     fetchMutation.mutate({ upstreams, timeout: 10 })
   }
 
-  const handleSelectValue = useCallback(
-    (
-      model: string,
-      ratioType: RatioType,
-      value: number | string,
-      sourceName: string
-    ) => {
-      setResolutions((prev) =>
-        applyResolutionSelection(prev, differences, {
-          model,
-          ratioType,
-          value,
-          sourceName,
-        })
-      )
-    },
-    [differences]
-  )
-
-  const handleSelectValues = useCallback(
-    (selections: ResolutionSelection[]) => {
-      if (selections.length === 0) return
-      setResolutions((prev) =>
-        applyResolutionSelections(prev, differences, selections)
-      )
-    },
-    [differences]
-  )
-
-  const handleUnselectValue = useCallback(
-    (model: string, ratioType: RatioType) => {
-      setResolutions((prev) => deleteResolutionField(prev, model, ratioType))
-    },
-    []
-  )
-
-  const handleUnselectValues = useCallback((plan: ResolutionRemovalPlan) => {
-    if (plan.size === 0) return
-    setResolutions((prev) => applyResolutionRemovalPlan(prev, plan))
-  }, [])
-
-  const parsedRatios = useMemo(() => {
+  const buildAnalysisRequest = (): PricingAnalysisRequest => {
+    const selectedChannels = channels.filter((ch) =>
+      selectedChannelIds.includes(ch.id)
+    )
+    // First paint has no channel selection. Use the public models.dev preset
+    // as a reference so costs show automatically without manual setup.
+    const effectiveChannels =
+      selectedChannels.length === 0
+        ? channels.filter((ch) => ch.id === MODELS_DEV_PRESET_ID)
+        : selectedChannels
+    const upstreams: UpstreamConfig[] = effectiveChannels.map((ch) => ({
+      id: ch.id,
+      name: ch.name,
+      base_url: ch.base_url,
+      endpoint: channelEndpoints[ch.id] || getDefaultEndpointForChannel(ch),
+    }))
+    const now = Math.floor(Date.now() / 1000)
+    const start = now - analysisDays * 86400
     return {
-      ModelRatio: parseJsonRecord<number>(modelRatios.ModelRatio),
-      CompletionRatio: parseJsonRecord<number>(modelRatios.CompletionRatio),
-      CacheRatio: parseJsonRecord<number>(modelRatios.CacheRatio),
-      CreateCacheRatio: parseJsonRecord<number>(modelRatios.CreateCacheRatio),
-      ImageRatio: parseJsonRecord<number>(modelRatios.ImageRatio),
-      AudioRatio: parseJsonRecord<number>(modelRatios.AudioRatio),
-      AudioCompletionRatio: parseJsonRecord<number>(
-        modelRatios.AudioCompletionRatio
-      ),
-      ModelPrice: parseJsonRecord<number>(modelRatios.ModelPrice),
-      'billing_setting.billing_mode': parseJsonRecord<string>(
-        modelRatios['billing_setting.billing_mode']
-      ),
-      'billing_setting.billing_expr': parseJsonRecord<string>(
-        modelRatios['billing_setting.billing_expr']
-      ),
+      upstreams,
+      timeout: 10,
+      vendor: analysisVendor,
+      start,
+      end: now,
+      windows: [8192, 32768, 131072, 200000, 1000000],
     }
-  }, [modelRatios])
-
-  type ParsedRatios = typeof parsedRatios
-
-  const getLocalBillingCategory = (
-    model: string,
-    currentRatios: ParsedRatios
-  ): 'price' | 'ratio' | null => {
-    if (currentRatios.ModelPrice[model] !== undefined) return 'price'
-    if (
-      currentRatios.ModelRatio[model] !== undefined ||
-      currentRatios.CompletionRatio[model] !== undefined ||
-      currentRatios.CacheRatio[model] !== undefined ||
-      currentRatios.CreateCacheRatio[model] !== undefined ||
-      currentRatios.ImageRatio[model] !== undefined ||
-      currentRatios.AudioRatio[model] !== undefined ||
-      currentRatios.AudioCompletionRatio[model] !== undefined
-    ) {
-      return 'ratio'
-    }
-    return null
   }
 
-  const performSync = useCallback(
-    async (currentRatios: ParsedRatios): Promise<boolean> => {
-      const finalRatios: Record<string, Record<string, number | string>> = {
-        ModelRatio: { ...currentRatios.ModelRatio },
-        CompletionRatio: { ...currentRatios.CompletionRatio },
-        CacheRatio: { ...currentRatios.CacheRatio },
-        CreateCacheRatio: { ...currentRatios.CreateCacheRatio },
-        ImageRatio: { ...currentRatios.ImageRatio },
-        AudioRatio: { ...currentRatios.AudioRatio },
-        AudioCompletionRatio: { ...currentRatios.AudioCompletionRatio },
-        ModelPrice: { ...currentRatios.ModelPrice },
-        'billing_setting.billing_mode': {
-          ...currentRatios['billing_setting.billing_mode'],
-        },
-        'billing_setting.billing_expr': {
-          ...currentRatios['billing_setting.billing_expr'],
-        },
+  const handleRefreshAnalysis = async () => {
+    setAnalysisLoading(true)
+    setAnalysisError(null)
+    try {
+      const request = buildAnalysisRequest()
+      // /analysis reads the latest /fetch snapshot; refresh it first so the
+      // comparison reflects current upstream prices after channel selection.
+      if (request.upstreams.length > 0) {
+        try {
+          await fetchUpstreamRatios({ upstreams: request.upstreams, timeout: request.timeout })
+        } catch {
+          // Keep the last known snapshot; analysis still shows local prices.
+        }
       }
+      const analysis = await fetchPricingAnalysis(request)
+      if (!analysis.success) {
+        const message = analysis.message || t('Failed to load analysis')
+        setAnalysisError(message)
+        toast.error(message)
+        setAnalysisData(null)
+        setFluctuationChanges([])
+        return
+      }
+      setAnalysisData(analysis.data)
 
-      Object.entries(resolutions).forEach(([model, ratios]) => {
-        const selectedTypes = Object.keys(ratios)
-        const hasPrice = selectedTypes.includes('model_price')
-        const hasRatio = selectedTypes.some((rt) =>
-          RATIO_SYNC_FIELDS.includes(rt as RatioType)
+      const fluctuations = await getPriceFluctuations(analysisThreshold)
+      if (!fluctuations.success) {
+        toast.error(fluctuations.message || t('Failed to load analysis'))
+        setFluctuationChanges([])
+        return
+      }
+      setFluctuationChanges(fluctuations.data.changes ?? [])
+      try {
+        sessionStorage.setItem(
+          ANALYSIS_CACHE_KEY,
+          JSON.stringify({
+            data: analysis.data,
+            changes: fluctuations.data.changes ?? [],
+            savedAt: Date.now(),
+            signature: {
+              vendor: analysisVendor,
+              days: analysisDays,
+              threshold: analysisThreshold,
+              channelIds: effectiveChannelIds,
+            },
+          } satisfies CachedAnalysis)
         )
-
-        if (hasPrice) {
-          delete finalRatios.ModelRatio[model]
-          delete finalRatios.CompletionRatio[model]
-          delete finalRatios.CacheRatio[model]
-          delete finalRatios.CreateCacheRatio[model]
-          delete finalRatios.ImageRatio[model]
-          delete finalRatios.AudioRatio[model]
-          delete finalRatios.AudioCompletionRatio[model]
-        }
-        if (hasRatio) {
-          delete finalRatios.ModelPrice[model]
-        }
-
-        Object.entries(ratios).forEach(([ratioType, value]) => {
-          const optionKey = optionKeyBySyncField(ratioType)
-          finalRatios[optionKey][model] = NUMERIC_SYNC_FIELDS.has(ratioType)
-            ? Number(value)
-            : value
-        })
-      })
-
-      const updates = Object.entries(finalRatios).map(([key, value]) => ({
-        key,
-        value: JSON.stringify(value, null, 2),
-      }))
-
-      return new Promise<boolean>((resolve) => {
-        syncMutate(updates, {
-          onSuccess: () => resolve(true),
-          onError: () => resolve(false),
-        })
-      })
-    },
-    [resolutions, syncMutate]
-  )
-
-  const findSourceChannel = (
-    model: string,
-    ratioType: RatioType,
-    value: number | string
-  ): string => {
-    const upMap = differences[model]?.[ratioType]?.upstreams
-    if (!upMap) return 'Unknown'
-    const entry = Object.entries(upMap).find(([, v]) => v === value)
-    return entry ? entry[0] : 'Unknown'
+      } catch {
+        // Storage may be unavailable; analysis still works without cache.
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t('Failed to load analysis')
+      setAnalysisError(message)
+      toast.error(message)
+      setAnalysisData(null)
+      setFluctuationChanges([])
+    } finally {
+      setAnalysisLoading(false)
+    }
   }
 
-  const handleApplySync = () => {
-    const currentRatios = parsedRatios
-    const conflicts: ConflictItem[] = []
+  const handleDaysChange = (days: number) => {
+    setAnalysisDays(days)
+  }
 
-    const fixedPriceLabel = t('Fixed price')
-    const modelRatioLabel = t('Model ratio')
-    const completionRatioLabel = t('Completion ratio')
+  const handleVendorChange = (vendor: number) => {
+    setAnalysisVendor(vendor)
+  }
 
-    Object.entries(resolutions).forEach(([model, ratios]) => {
-      const localCat = getLocalBillingCategory(model, currentRatios)
-      const selectedTypes = Object.keys(ratios)
-      let newCat: 'price' | 'ratio' | 'tiered'
-      if ('model_price' in ratios) {
-        newCat = 'price'
-      } else if (RATIO_SYNC_FIELDS.some((rt) => selectedTypes.includes(rt))) {
-        newCat = 'ratio'
-      } else {
-        newCat = 'tiered'
-      }
+  const handleThresholdChange = (threshold: number) => {
+    setAnalysisThreshold(threshold)
+  }
 
-      if (localCat && newCat !== 'tiered' && localCat !== newCat) {
-        const currentDesc =
-          localCat === 'price'
-            ? `${fixedPriceLabel}: ${currentRatios.ModelPrice[model]}`
-            : `${modelRatioLabel}: ${currentRatios.ModelRatio[model] ?? '-'}\n${completionRatioLabel}: ${currentRatios.CompletionRatio[model] ?? '-'}`
 
-        const newDesc =
-          newCat === 'price'
-            ? `${fixedPriceLabel}: ${ratios.model_price}`
-            : `${modelRatioLabel}: ${ratios.model_ratio ?? '-'}\n${completionRatioLabel}: ${ratios.completion_ratio ?? '-'}`
+  const refreshRef = useRef(handleRefreshAnalysis)
+  useEffect(() => {
+    refreshRef.current = handleRefreshAnalysis
+  })
 
-        const channelNames = selectedTypes
-          .map((rt) => findSourceChannel(model, rt as RatioType, ratios[rt]))
-          .filter((v, idx, arr) => arr.indexOf(v) === idx)
-          .join(', ')
-
-        conflicts.push({
-          channel: channelNames,
-          model,
-          current: currentDesc,
-          newVal: newDesc,
-        })
-      }
-    })
-
-    if (conflicts.length > 0) {
-      setConflictItems(conflicts)
-      setConflictDialogOpen(true)
+  useEffect(() => {
+    if (analysisLoadedRef.current || channels.length === 0) return
+    analysisLoadedRef.current = true
+    // Reuse cache only if fresh AND produced with the current filters;
+    // otherwise we would show data for the wrong vendor/day/threshold.
+    const cached = readCachedAnalysis()
+    if (
+      cached &&
+      Date.now() - cached.savedAt < ANALYSIS_REFRESH_MS &&
+      cached.signature.vendor === analysisVendor &&
+      cached.signature.days === analysisDays &&
+      cached.signature.threshold === analysisThreshold &&
+      JSON.stringify(cached.signature.channelIds) ===
+        JSON.stringify(effectiveChannelIds)
+    ) {
       return
     }
+    void handleRefreshAnalysis()
+  }, [
+    handleRefreshAnalysis,
+    channels.length,
+    analysisVendor,
+    analysisDays,
+    analysisThreshold,
+    effectiveChannelIds,
+  ])
 
-    toast.info(t('Syncing prices, please wait...'))
-    performSync(currentRatios)
-  }
-
-  const handleConfirmConflict = async () => {
-    setConfirmLoading(true)
-    try {
-      const success = await performSync(parsedRatios)
-      if (success) {
-        setConflictDialogOpen(false)
-      }
-    } finally {
-      setConfirmLoading(false)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (!document.hidden) void refreshRef.current()
+    }, ANALYSIS_REFRESH_MS)
+    return () => window.clearInterval(id)
+  }, [])
+  useEffect(() => {
+    const lastFilters = lastFiltersRef.current
+    if (
+      lastFilters.vendor === analysisVendor &&
+      lastFilters.days === analysisDays &&
+      lastFilters.threshold === analysisThreshold
+    ) {
+      return
     }
-  }
+    lastFiltersRef.current = {
+      vendor: analysisVendor,
+      days: analysisDays,
+      threshold: analysisThreshold,
+    }
+    void handleRefreshAnalysis()
+  }, [analysisVendor, analysisDays, analysisThreshold, handleRefreshAnalysis])
 
-  const hasSelections = Object.keys(resolutions).length > 0
-  const isLoading = fetchMutation.isPending || isSyncPending || confirmLoading
+  const isLoading = fetchMutation.isPending || analysisLoading
 
   return (
     <div className='flex h-full min-h-0 flex-col gap-4'>
@@ -489,31 +412,21 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
           <RefreshCcw className='mr-2 h-4 w-4 max-sm:hidden' />
           {t('Select Sync Channels')}
         </Button>
-        <Button
-          variant='secondary'
-          size='sm'
-          className='max-sm:px-2'
-          onClick={handleApplySync}
-          disabled={!hasSelections || isLoading}
-        >
-          {(isSyncPending || confirmLoading) && (
-            <span className='mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent' />
-          )}
-          <CheckSquare className='mr-2 h-4 w-4 max-sm:hidden' />
-          {t('Apply Sync')}
-        </Button>
       </SettingsPageActionsPortal>
-
-      <div className='min-h-0 flex-1'>
-        <UpstreamRatioSyncTable
-          differences={differences}
-          resolutions={resolutions}
-          isDisabled={isLoading}
-          isSyncing={fetchMutation.isPending}
-          onSelectValue={handleSelectValue}
-          onSelectValues={handleSelectValues}
-          onUnselectValue={handleUnselectValue}
-          onUnselectValues={handleUnselectValues}
+      <div className='flex min-h-0 flex-1 flex-col'>
+        <PricingAnalysisTable
+          data={analysisData}
+          changes={fluctuationChanges}
+          isLoading={analysisLoading}
+          error={analysisError}
+          vendor={analysisVendor}
+          days={analysisDays}
+          threshold={analysisThreshold}
+          onVendorChange={handleVendorChange}
+          onDaysChange={handleDaysChange}
+          onThresholdChange={handleThresholdChange}
+          onRefresh={handleRefreshAnalysis}
+          onRowClick={setSelectedAnalysisRow}
         />
       </div>
 
@@ -528,13 +441,32 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
         onConfirm={handleConfirmChannelSelection}
       />
 
-      <ConflictConfirmDialog
-        open={conflictDialogOpen}
-        onOpenChange={setConflictDialogOpen}
-        conflicts={conflictItems}
-        onConfirm={handleConfirmConflict}
-        isLoading={confirmLoading}
+      <PricingAnalysisDialog
+        row={selectedAnalysisRow}
+        onOpenChange={(open) => {
+          if (!open) setSelectedAnalysisRow(null)
+        }}
       />
+      <div className='fixed right-4 bottom-6 z-30 flex flex-col gap-2'>
+        <Button
+          size='icon'
+          variant='secondary'
+          className='rounded-full shadow-lg'
+          aria-label={t('Back to top')}
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
+          <ArrowUp className='h-4 w-4' />
+        </Button>
+        <Button
+          size='icon'
+          className='rounded-full shadow-lg'
+          aria-label={t('Refresh Analysis')}
+          onClick={handleRefreshAnalysis}
+          disabled={analysisLoading}
+        >
+          <RefreshCcw className={cn('h-4 w-4', analysisLoading && 'animate-spin')} />
+        </Button>
+      </div>
     </div>
   )
 }

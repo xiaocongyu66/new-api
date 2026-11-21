@@ -27,7 +27,6 @@ const OPERATIONS_SECTION_NAV = [
   { id: 'behavior', titleKey: 'System Behavior' },
   { id: 'alerts', titleKey: 'Monitoring & Alerts' },
   { id: 'email', titleKey: 'SMTP Email' },
-  { id: 'worker', titleKey: 'Worker Proxy' },
   { id: 'logs', titleKey: 'Log Maintenance' },
   { id: 'performance', titleKey: 'Performance' },
   { id: 'update-checker', titleKey: 'System maintenance' },

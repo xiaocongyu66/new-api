@@ -62,23 +62,50 @@ type QueryResult struct {
 
 type ModelSummary struct {
 	ModelName          string    `json:"model_name"`
-	AvgLatencyMs       int64     `json:"avg_latency_ms"`
+	AvgLatencyMs       *int64    `json:"avg_latency_ms"`
 	SuccessRate        float64   `json:"success_rate"`
 	AvgTps             float64   `json:"avg_tps"`
 	RecentSuccessRates []float64 `json:"recent_success_rates,omitempty"`
+	// Source identifies the signals used for the summary success rate.
+	Source string `json:"source"`
 	// RecentSeries is a downsampled latency/success timeline over the query
 	// window (last RecentSeriesPoints hourly buckets). It lets the model
-	// square draw per-card trend charts from the single summary request
-	// instead of one per-model request per visible card.
+	// square draw per-card trend charts from the single summary request.
 	RecentSeries []ModelRecentPoint `json:"recent_series,omitempty"`
 	RequestCount int64              `json:"-"`
 }
 
+// ProbeBucket is one hourly bucket of upstream-probe results for a model.
+// Probe rows are keyed by channel and model; collapsing them to model buckets
+// keeps the model-square chart independent of channel identity.
+type ProbeBucket struct {
+	Model          string
+	BucketTs       int64
+	TotalCount     int64
+	SuccessCount   int64
+	TotalLatencyMs int64
+}
+
+// UpstreamHealthPoint is one channel/model request-derived health signal:
+// ewma_score from channel_model_health, rescaled to a 0-100 success rate.
+// ObservedAt marks the latest score update behind the estimate.
+type UpstreamHealthPoint struct {
+	Model      string
+	ChannelID  int
+	Rate       float64 // 0-100
+	LatencyMs  int64
+	ObservedAt int64   // Unix seconds
+	Weight     float64 // static route weight for weighted averaging
+}
+
 // ModelRecentPoint is one hourly bucket of a model's latency and success rate.
+// Nil values mean the hour has no sample at all; the chart draws a gap rather
+// than a fabricated healthy point. Source says which measurement filled it.
 type ModelRecentPoint struct {
-	Ts          int64   `json:"ts"`
-	LatencyMs   int64   `json:"latency_ms"`
-	SuccessRate float64 `json:"success_rate"`
+	Ts          int64    `json:"ts"`
+	LatencyMs   *int64   `json:"latency_ms"`
+	SuccessRate *float64 `json:"success_rate"`
+	Source      string   `json:"source"`
 }
 
 type SummaryAllResult struct {
@@ -341,7 +368,7 @@ func Query(params QueryParams) (QueryResult, error) {
 	return buildQueryResult(params.Model, merged), nil
 }
 
-func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
+func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, upstreamPoints []UpstreamHealthPoint) (SummaryAllResult, error) {
 	if hours <= 0 {
 		hours = 24
 	}
@@ -390,32 +417,237 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 		return true
 	})
 
-	models := make([]ModelSummary, 0, len(totals))
-	for name, total := range totals {
-		if total.requestCount == 0 {
+	// Pool probe counts across channels per model: summing successes and
+	// totals before dividing is the unbiased rate, unlike averaging channel
+	// rates (which overweights channels with few probes).
+	probesByModel := map[string]map[int64]ProbeBucket{}
+	probeTotals := map[string]ProbeBucket{}
+	for _, probe := range probeBuckets {
+		if probe.TotalCount <= 0 {
 			continue
 		}
-		avgLatency := total.totalLatencyMs / total.requestCount
-		successRate := float64(total.successCount) / float64(total.requestCount) * 100
-		avgTps := 0.0
-		if total.generationMs > 0 {
-			avgTps = float64(total.outputTokens) / (float64(total.generationMs) / 1000.0)
+		if _, ok := probesByModel[probe.Model]; !ok {
+			probesByModel[probe.Model] = map[int64]ProbeBucket{}
 		}
+		probesByModel[probe.Model][probe.BucketTs] = probe
+		total := probeTotals[probe.Model]
+		total.TotalCount += probe.TotalCount
+		total.SuccessCount += probe.SuccessCount
+		total.TotalLatencyMs += probe.TotalLatencyMs
+		probeTotals[probe.Model] = total
+	}
+
+	// Upstream health is a request-derived snapshot per (channel, model). Only
+	// observations inside the window count. The model rate is the static-weight
+	// average of its channel rates: Σ(rate×weight)/Σweight. Zero weight carries
+	// no prior in routing, so it carries none in the display either.
+	upstreamByModel := map[string][]UpstreamHealthPoint{}
+	upstreamLatencySum := map[string]float64{}
+	upstreamLatencyCount := map[string]int{}
+	for _, point := range upstreamPoints {
+		if point.ObservedAt > 0 && (point.ObservedAt < startTs || point.ObservedAt > endTs) {
+			continue
+		}
+		upstreamByModel[point.Model] = append(upstreamByModel[point.Model], point)
+		if point.LatencyMs > 0 {
+			upstreamLatencySum[point.Model] += float64(point.LatencyMs)
+			upstreamLatencyCount[point.Model]++
+		}
+	}
+	upstreamRateByModel := map[string]float64{}
+	upstreamLatencyByModel := map[string]*int64{}
+	for model, points := range upstreamByModel {
+		upstreamRateByModel[model] = UpstreamRateWeighted(points)
+		if upstreamLatencyCount[model] > 0 {
+			latency := int64(upstreamLatencySum[model] / float64(upstreamLatencyCount[model]))
+			upstreamLatencyByModel[model] = &latency
+		}
+	}
+	upstreamCount := make(map[string]int, len(upstreamByModel))
+	for model, points := range upstreamByModel {
+		upstreamCount[model] = len(points)
+	}
+
+	modelNames := make([]string, 0, len(totals)+len(probeTotals)+len(upstreamCount))
+	seen := make(map[string]struct{}, len(totals)+len(probeTotals)+len(upstreamCount))
+	for name := range totals {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		modelNames = append(modelNames, name)
+	}
+	for name := range probeTotals {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		modelNames = append(modelNames, name)
+	}
+	for name := range upstreamCount {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		modelNames = append(modelNames, name)
+	}
+
+	models := make([]ModelSummary, 0, len(modelNames))
+	for _, name := range modelNames {
+		total := totals[name]
+		probe := probeTotals[name]
+		var upstreamRate *float64
+		if rate, ok := upstreamRateByModel[name]; ok {
+			upstreamRate = &rate
+		}
+
+		// Real traffic, probes and request-derived upstream health all count.
+		// Upstream health is a weighted (Σrate×weight/Σweight) signal of the
+		// channels actually serving the model, so it must stay in the blend
+		// even when the model also has real requests — otherwise a healthy or
+		// failing upstream would be invisible on exactly the busiest models.
+		var avgLatency *int64
+		var successRate float64
+		var source string
+		var avgTps float64
+		switch {
+		case total.requestCount > 0:
+			realRate := float64(total.successCount) / float64(total.requestCount) * 100
+			measuredLatency := total.totalLatencyMs / total.requestCount
+			avgLatency = &measuredLatency
+			source = "request"
+			signals := []*float64{&realRate}
+			if probe.TotalCount > 0 {
+				probeRate := float64(probe.SuccessCount) / float64(probe.TotalCount) * 100
+				signals = append(signals, &probeRate)
+				source = "request+probe"
+			}
+			if upstreamRate != nil {
+				signals = append(signals, upstreamRate)
+			}
+			if blended := BlendRates(signals...); blended != nil {
+				successRate = *blended
+			}
+			if total.generationMs > 0 {
+				avgTps = float64(total.outputTokens) / (float64(total.generationMs) / 1000.0)
+			}
+		case probe.TotalCount > 0:
+			probeRate := float64(probe.SuccessCount) / float64(probe.TotalCount) * 100
+			measuredLatency := probe.TotalLatencyMs / probe.TotalCount
+			avgLatency = &measuredLatency
+			source = "probe"
+			successRate = probeRate
+			if upstreamRate != nil {
+				blended := BlendRates(&probeRate, upstreamRate)
+				if blended != nil {
+					successRate = *blended
+				}
+				source = "probe+upstream"
+			}
+		default:
+			source = "upstream"
+			avgLatency = upstreamLatencyByModel[name]
+			if upstreamRate != nil {
+				successRate = *upstreamRate
+			}
+		}
+
+		recentRates := recentSuccessRates(modelBuckets[name], 3)
+		if len(recentRates) == 0 {
+			probeRates := map[int64]counters{}
+			for ts, hour := range probesByModel[name] {
+				probeRates[ts] = counters{
+					requestCount:   hour.TotalCount,
+					successCount:   hour.SuccessCount,
+					totalLatencyMs: hour.TotalLatencyMs,
+				}
+			}
+			recentRates = recentSuccessRates(probeRates, 3)
+		}
+		if len(recentRates) == 0 && upstreamRate != nil {
+			recentRates = []float64{*upstreamRate}
+		}
+
 		models = append(models, ModelSummary{
 			ModelName:          name,
 			AvgLatencyMs:       avgLatency,
 			SuccessRate:        math.Round(successRate*100) / 100,
 			AvgTps:             math.Round(avgTps*100) / 100,
-			RecentSuccessRates: recentSuccessRates(modelBuckets[name], 3),
-			RecentSeries:       recentSeries(modelBuckets[name], recentSeriesPoints),
+			RecentSuccessRates: recentRates,
+			Source:             source,
+			RecentSeries:       recentSeries(modelBuckets[name], probesByModel[name], upstreamRate, upstreamLatencyByModel[name], recentSeriesPoints),
 			RequestCount:       total.requestCount,
 		})
 	}
 	sort.Slice(models, func(i, j int) bool {
-		return models[i].RequestCount > models[j].RequestCount
+		if models[i].RequestCount != models[j].RequestCount {
+			return models[i].RequestCount > models[j].RequestCount
+		}
+		return models[i].ModelName < models[j].ModelName
 	})
 
 	return SummaryAllResult{Models: models}, nil
+}
+
+// BlendRates averages the available success-rate signals. Nil entries are
+// absent sources and are skipped, so a model backed by only one source keeps
+// that source's rate instead of being diluted toward zero. Both the chart and
+// the probe webhook use this so the two views agree on what "success" means.
+func BlendRates(rates ...*float64) *float64 {
+	sum := 0.0
+	count := 0
+	for _, rate := range rates {
+		if rate == nil {
+			continue
+		}
+		sum += *rate
+		count++
+	}
+	if count == 0 {
+		return nil
+	}
+	blended := math.Round(sum/float64(count)*100) / 100
+	return &blended
+}
+
+// WeightedRate averages signals by static route weight: Σ(rate×weight)/Σweight.
+// Signals with no positive weight are dropped, matching P2C where a zero-weight
+// unit carries no prior; if every weight is absent it falls back to a plain
+// mean so a misconfigured pool still reports evidence instead of nothing.
+func WeightedRate(signals []RateWeightSignal) float64 {
+	var weighted, total, plainSum float64
+	var plainCount int
+	for _, signal := range signals {
+		if signal.Weight > 0 {
+			weighted += signal.Rate * signal.Weight
+			total += signal.Weight
+			continue
+		}
+		plainSum += signal.Rate
+		plainCount++
+	}
+	if total > 0 {
+		return math.Round(weighted/total*100) / 100
+	}
+	if plainCount > 0 {
+		return math.Round(plainSum/float64(plainCount)*100) / 100
+	}
+	return 0
+}
+
+// RateWeightSignal is one success rate with its static route weight.
+type RateWeightSignal struct {
+	Rate   float64
+	Weight float64
+}
+
+// UpstreamRateWeighted averages channel/model health points by static weight.
+func UpstreamRateWeighted(points []UpstreamHealthPoint) float64 {
+	signals := make([]RateWeightSignal, 0, len(points))
+	for _, point := range points {
+		signals = append(signals, RateWeightSignal{Rate: point.Rate, Weight: point.Weight})
+	}
+	return WeightedRate(signals)
 }
 
 func mergeModelTotals(totals map[string]counters, modelName string, value counters) {
@@ -452,16 +684,14 @@ func mergeModelBucket(modelBuckets map[string]map[int64]counters, modelName stri
 }
 
 // recentSeriesPoints is how many hourly buckets the per-card trend carries.
-// The card chart draws a full day, so the series is dense: every bucket in
-// the window is present and quiet hours are filled with zero latency and a
-// 100% success rate, mirroring how the details chart reads an idle hour
-// (no failed requests, no measured latency).
 const recentSeriesPoints = 24
 
-// recentSeries renders a model's hourly buckets as a fixed-length timeline,
-// oldest first. Missing hours are filled so the x axis always spans a full
-// day even when the model only had traffic in part of it.
-func recentSeries(buckets map[int64]counters, limit int) []ModelRecentPoint {
+// recentSeries renders a fixed-length hourly timeline, oldest first. Real
+// request buckets and probe buckets carry their own hour; an hour with neither
+// falls back to the request-derived upstream snapshot when one was observed.
+// A point with no measurement stays empty so the card draws a gap instead of
+// inventing a healthy sample.
+func recentSeries(buckets map[int64]counters, probes map[int64]ProbeBucket, upstreamRate *float64, upstreamLatency *int64, limit int) []ModelRecentPoint {
 	if limit <= 0 {
 		return nil
 	}
@@ -471,7 +701,12 @@ func recentSeries(buckets map[int64]counters, limit int) []ModelRecentPoint {
 			newest = ts
 		}
 	}
-	if newest == 0 {
+	for ts := range probes {
+		if ts > newest {
+			newest = ts
+		}
+	}
+	if newest == 0 && upstreamRate == nil {
 		return nil
 	}
 	latest := bucketStart(time.Now().Unix())
@@ -486,16 +721,30 @@ func recentSeries(buckets map[int64]counters, limit int) []ModelRecentPoint {
 	points := make([]ModelRecentPoint, 0, limit)
 	for offset := int64(limit - 1); offset >= 0; offset-- {
 		ts := latest - offset*bucketSeconds
-		b := buckets[ts]
-		if b.requestCount == 0 {
-			points = append(points, ModelRecentPoint{Ts: ts, SuccessRate: 100})
+		if b := buckets[ts]; b.requestCount > 0 {
+			latency := b.totalLatencyMs / b.requestCount
+			rate := math.Round(successRate(b)*100) / 100
+			points = append(points, ModelRecentPoint{
+				Ts: ts, LatencyMs: &latency, SuccessRate: &rate, Source: "request",
+			})
 			continue
 		}
-		points = append(points, ModelRecentPoint{
-			Ts:          ts,
-			LatencyMs:   b.totalLatencyMs / b.requestCount,
-			SuccessRate: math.Round(successRate(b)*100) / 100,
-		})
+		if p := probes[ts]; p.TotalCount > 0 {
+			latency := p.TotalLatencyMs / p.TotalCount
+			rate := math.Round(float64(p.SuccessCount)/float64(p.TotalCount)*10000) / 100
+			points = append(points, ModelRecentPoint{
+				Ts: ts, LatencyMs: &latency, SuccessRate: &rate, Source: "probe",
+			})
+			continue
+		}
+		if upstreamRate != nil {
+			rate := math.Round(*upstreamRate*100) / 100
+			points = append(points, ModelRecentPoint{
+				Ts: ts, LatencyMs: upstreamLatency, SuccessRate: &rate, Source: "upstream",
+			})
+			continue
+		}
+		points = append(points, ModelRecentPoint{Ts: ts, Source: "none"})
 	}
 	return points
 }

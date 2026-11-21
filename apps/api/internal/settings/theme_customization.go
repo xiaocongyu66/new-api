@@ -55,7 +55,7 @@ func themeCustomizationEnumSet(values ...string) map[string]struct{} {
 }
 
 var (
-	themeCustomizationPresets        = themeCustomizationEnumSet("default", "anthropic", "nailao", "simple-large", "underground", "rose-garden", "lake-view", "sunset-glow", "forest-whisper", "ocean-breeze", "lavender-dream")
+	themeCustomizationPresets        = themeCustomizationEnumSet("default", "anthropic", "simple-large", "underground", "rose-garden", "lake-view", "sunset-glow", "forest-whisper", "ocean-breeze", "lavender-dream")
 	themeCustomizationFonts          = themeCustomizationEnumSet("default", "sans", "serif")
 	themeCustomizationRadii          = themeCustomizationEnumSet("default", "none", "sm", "md", "lg", "xl")
 	themeCustomizationScales         = themeCustomizationEnumSet("default", "sm", "lg", "xl")

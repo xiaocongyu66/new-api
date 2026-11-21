@@ -984,6 +984,9 @@ func FetchUpstreamRatios(c contract.Context) {
 		}
 	}
 
+	// Persist this batch of upstream prices for /analysis and /fluctuation.
+	// Best effort: persistence failures must never break the fetch response.
+	persistUpstreamPriceSnapshots(common.GetTimestamp(), successfulChannels)
 	differences := buildDifferences(localData, successfulChannels)
 
 	_ = c.JSON(http.StatusOK, common.H{

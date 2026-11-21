@@ -201,7 +201,7 @@ func rechargeTopUp(tradeNo string, expectedPaymentProvider string, actualPayment
 		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
 			return err
 		}
-		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd, rechargeSource(topUp), ""); err != nil {
 			return err
 		}
 		return nil
@@ -411,7 +411,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
 			return err
 		}
-		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd, rechargeSource(topUp), ""); err != nil {
 			return err
 		}
 
@@ -477,7 +477,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
 			return err
 		}
-		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd, rechargeSource(topUp), ""); err != nil {
 			return err
 		}
 		return nil
@@ -542,7 +542,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
 			return err
 		}
-		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd); err != nil {
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quotaToAdd, rechargeSource(topUp), ""); err != nil {
 			return err
 		}
 		return nil
@@ -620,7 +620,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		if err := creditTopUpQuota(tx, topUp.UserId, quota, updateFields); err != nil {
 			return err
 		}
-		if err := applyInviteRechargeRewards(tx, topUp.UserId, quota); err != nil {
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quota, rechargeSource(topUp), ""); err != nil {
 			return err
 		}
 		return nil
@@ -716,7 +716,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		}); err != nil {
 			return err
 		}
-		if err := applyInviteRechargeRewards(tx, topUp.UserId, quota); err != nil {
+		if err := applyInviteRechargeRewards(tx, topUp.UserId, quota, rechargeSource(topUp), ""); err != nil {
 			return err
 		}
 		return nil

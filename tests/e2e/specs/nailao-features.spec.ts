@@ -68,14 +68,14 @@ test.describe('Home, Theme & User Insights E2E Tests', () => {
     const drawer = page.locator('[role="dialog"], [data-slot="sheet-content"]').first();
     await expect(drawer).toBeVisible();
 
-    // Verify the default and the gold preset are both listed and distinct
+    // Verify the default and Anthropic presets are both listed and distinct
     const defaultPreset = drawer.getByText(/默认|Default/).first();
-    const goldPreset = drawer.getByText(/奶酪金|Cheese/).first();
+    const anthropicPreset = drawer.getByText('Anthropic').first();
     await expect(defaultPreset).toBeVisible();
-    await expect(goldPreset).toBeVisible();
+    await expect(anthropicPreset).toBeVisible();
 
-    // Click the gold preset
-    await goldPreset.click();
+    // Click the Anthropic preset
+    await anthropicPreset.click();
     await page.waitForTimeout(600);
 
     // Verify body element remains intact and styled

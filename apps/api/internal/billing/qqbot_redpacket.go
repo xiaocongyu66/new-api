@@ -16,19 +16,19 @@ import (
 // 红包指令与按钮
 //
 // 发红包只能通过文字指令（需要输入金额和个数），抢红包用按钮。
-// 按钮 data 里带红包 ID，格式 nailao_rp_grab:<id>。
+// 按钮 data 里带红包 ID，格式 qqbot_rp_grab:<id>。
 const (
 	CmdRedPacket = "/红包"
 
-	ButtonIDRedPacketGrab   = "nailao_rp_grab"
-	ButtonDataRedPacketGrab = "nailao_rp_grab:"
+	ButtonIDRedPacketGrab   = "qqbot_rp_grab"
+	ButtonDataRedPacketGrab = "qqbot_rp_grab:"
 
 	// 一键领取：单按钮批量领取本群所有可抢红包，只回复一条汇总
-	ButtonIDRedPacketGrabAll   = "nailao_rp_grab_all"
-	ButtonDataRedPacketGrabAll = "nailao_rp_grab_all"
+	ButtonIDRedPacketGrabAll   = "qqbot_rp_grab_all"
+	ButtonDataRedPacketGrabAll = "qqbot_rp_grab_all"
 
-	ButtonIDRedPacketDetail   = "nailao_rp_detail"
-	ButtonDataRedPacketDetail = "nailao_rp_detail:"
+	ButtonIDRedPacketDetail   = "qqbot_rp_detail"
+	ButtonDataRedPacketDetail = "qqbot_rp_detail:"
 )
 
 // redPacketAliases 发红包指令的可接受写法

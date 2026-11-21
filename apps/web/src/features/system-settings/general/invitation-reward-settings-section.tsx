@@ -16,13 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
+import { MultiSelect } from '@/components/multi-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -42,6 +45,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { formatQuota } from '@/lib/format'
+
+import { getRedemptionNames } from '@/features/redemption-codes/api'
+import type { RedemptionNameGroup } from '@/features/redemption-codes/types'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -63,6 +69,8 @@ const createInvitationRewardSchema = () =>
       rebate_multiplier: z.coerce.number().min(0),
       rebate_trigger: z.enum(['first', 'every']),
       transfer_min_quota_display: z.coerce.number().min(0),
+      recharge_sources: z.string(),
+      redemption_code_names: z.string(),
     }),
   })
 
@@ -74,6 +82,8 @@ type InvitationRewardFormValues = {
     rebate_multiplier: number
     rebate_trigger: 'first' | 'every'
     transfer_min_quota_display: number
+    recharge_sources: string
+    redemption_code_names: string
   }
 }
 type QuotaInputValue = number | ''
@@ -89,6 +99,21 @@ export function InvitationRewardSettingsSection(
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const complianceConfirmed = props.complianceConfirmed ?? true
+  const [redemptionNames, setRedemptionNames] = useState<RedemptionNameGroup[]>([])
+
+  useEffect(() => {
+    let active = true
+    void getRedemptionNames()
+      .then((response) => {
+        if (!active || !response.success || !response.data) return
+        setRedemptionNames(response.data)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
+
 
   const handleNumberChange =
     (onChange: (value: QuotaInputValue) => void) =>
@@ -126,6 +151,12 @@ export function InvitationRewardSettingsSection(
     { value: 'every', label: t('Every Recharge') },
   ]
 
+  const sourceItems = [
+    { value: 'topup', label: t('Wallet top-up') },
+    { value: 'subscription', label: t('Subscription purchase') },
+    { value: 'redemption', label: t('Redemption codes') },
+  ]
+
   return (
     <SettingsSection title={t('Invitation Rewards')}>
       <FormNavigationGuard when={isDirty} />
@@ -140,13 +171,6 @@ export function InvitationRewardSettingsSection(
         </Alert>
       ) : null}
 
-      <Alert>
-        <AlertDescription>
-          {t(
-            'Rebates apply only to wallet top-ups; subscription purchases are not included.'
-          )}
-        </AlertDescription>
-      </Alert>
 
       <Form {...form}>
         <SettingsForm onSubmit={handleSubmit}>
@@ -310,9 +334,6 @@ export function InvitationRewardSettingsSection(
                       </SelectContent>
                     </Select>
                   </FormControl>
-                  <FormDescription>
-                    {t('First Recharge Only counts the first wallet top-up after invite registration; subscription purchases are excluded.')}
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -340,6 +361,96 @@ export function InvitationRewardSettingsSection(
                 </FormItem>
               )}
             />
+
+            <FormField
+              control={form.control}
+              name='invite_reward.recharge_sources'
+              render={({ field }) => {
+                const selected = (field.value ?? '').split(',').filter(Boolean)
+                return (
+                  <FormItem className='col-span-2'>
+                    <FormLabel>{t('Recharge Sources')}</FormLabel>
+                    <FormControl>
+                      <div
+                        role='group'
+                        aria-label={t('Recharge Sources')}
+                        className='flex flex-wrap gap-2'
+                      >
+                        {sourceItems.map((item) => {
+                          const pressed = selected.includes(item.value)
+                          return (
+                            <Button
+                              key={item.value}
+                              type='button'
+                              variant={pressed ? 'default' : 'outline'}
+                              size='lg'
+                              aria-pressed={pressed}
+                              disabled={pressed && selected.length === 1}
+                              className='disabled:opacity-100'
+                              onClick={() => {
+                                const next = pressed
+                                  ? selected.filter((value) => value !== item.value)
+                                  : [...selected, item.value]
+                                field.onChange(next.join(','))
+                              }}
+                            >
+                              {item.label}
+                            </Button>
+                          )
+                        })}
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      {t('Select at least one recharge source')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
+            />
+
+            {form
+              .watch('invite_reward.recharge_sources')
+              ?.split(',')
+              .includes('redemption') ? (
+              <FormField
+                control={form.control}
+                name='invite_reward.redemption_code_names'
+                render={({ field }) => {
+                  const selected = (field.value ?? '')
+                    .split(',')
+                    .filter(Boolean)
+                  return (
+                    <FormItem className='col-span-2'>
+                      <FormLabel>
+                        {t('Redemption code types counted as recharge')}
+                      </FormLabel>
+                      <FormControl>
+                        <MultiSelect
+                          options={redemptionNames.map((group) => ({
+                            label: `${group.name} · ${t('{{count}} codes', { count: String(group.count) })} · ${t('Total {{amount}}', { amount: formatQuota(group.total_quota_display) })}`,
+                            value: group.name,
+                          }))}
+                          selected={selected}
+                          onChange={(values) => field.onChange(values.join(','))}
+                          placeholder={t('Search or add redemption code types')}
+                          allowCreate
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Codes are grouped by name. New codes with a selected name will count as recharge automatically.')}
+                      </FormDescription>
+                      {selected.length === 0 ? (
+                        <FormDescription>
+                          {t('No types selected, redemption codes will not count as recharge')}
+                        </FormDescription>
+                      ) : null}
+                      <FormMessage />
+                    </FormItem>
+                  )
+                }}
+              />
+            ) : null}
           </SettingsFormGrid>
         </SettingsForm>
       </Form>

@@ -25,6 +25,7 @@ import type {
   GetRedemptionsResponse,
   SearchRedemptionsParams,
   RedemptionFormData,
+  RedemptionNameGroup,
 } from './types'
 
 // ============================================================================
@@ -37,6 +38,14 @@ export async function getRedemptions(
 ): Promise<GetRedemptionsResponse> {
   const { p = 1, page_size = 10 } = params
   const res = await api.get(`/api/redemption/?p=${p}&page_size=${page_size}`)
+  return res.data
+}
+
+// Get distinct redemption code names for invite-reward source scoping.
+export async function getRedemptionNames(): Promise<
+  ApiResponse<RedemptionNameGroup[]>
+> {
+  const res = await api.get('/api/redemption/names')
   return res.data
 }
 

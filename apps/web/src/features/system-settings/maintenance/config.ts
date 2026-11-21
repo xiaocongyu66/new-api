@@ -62,8 +62,6 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     detail: true,
     token: true,
     log: true,
-    midjourney: true,
-    task: true,
   },
   personal: {
     enabled: true,
@@ -203,6 +201,14 @@ export function parseSidebarModulesAdmin(
       Object.entries(raw as Record<string, unknown>).forEach(
         ([moduleKey, moduleValue]) => {
           if (moduleKey === 'enabled') return
+          // Drop retired console modules (Drawing/Task Logs). Only filter the
+          // known removed keys so custom sections remain untouched.
+          if (
+            sectionKey === 'console' &&
+            (moduleKey === 'midjourney' || moduleKey === 'task')
+          ) {
+            return
+          }
           sectionConfig[moduleKey] = toBoolean(
             moduleValue,
             defaultSection[moduleKey] ?? true

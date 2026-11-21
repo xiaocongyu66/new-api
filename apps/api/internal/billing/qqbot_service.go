@@ -14,11 +14,11 @@ import (
 
 // 按钮 ID 与回调数据
 const (
-	ButtonIDCheckin   = "nailao_checkin"
+	ButtonIDCheckin   = "qqbot_checkin"
 	ButtonDataCheckin = "/签到"
 
 	// 指令按钮：点击后在输入框插入 @bot /签到 由用户自己发送
-	ButtonIDJoinCheckin = "nailao_join_checkin"
+	ButtonIDJoinCheckin = "qqbot_join_checkin"
 )
 
 // 签到指令关键字，去掉 @机器人 前缀后进行匹配
@@ -644,7 +644,7 @@ func HandleInteraction(event *InteractionEvent) {
 	buttonID := event.Data.Resolved.ButtonID
 	openID := event.GroupMemberOpenID
 
-	// Fix 4: 冷却按按钮作用域隔离（nailao_rp_grab:<id> → nailao_rp_grab），
+	// Fix 4: 冷却按按钮作用域隔离（qqbot_rp_grab:<id> → qqbot_rp_grab），
 	// 同按钮连点被拦，其他按钮不受影响；拒绝时静默不发群消息。
 	btnScope := commandScope(buttonData)
 	if err := CheckCooldown(openID, btnScope); err != nil {
@@ -678,7 +678,7 @@ func HandleInteraction(event *InteractionEvent) {
 		return
 	}
 
-	// 抢红包按钮，data 形如 nailao_rp_grab:<id>
+	// 抢红包按钮，data 形如 qqbot_rp_grab:<id>
 	if strings.HasPrefix(buttonData, ButtonDataRedPacketGrab) {
 		packetID := strings.TrimPrefix(buttonData, ButtonDataRedPacketGrab)
 		reply := HandleRedPacketGrab(packetID, openID, event.GroupOpenID)

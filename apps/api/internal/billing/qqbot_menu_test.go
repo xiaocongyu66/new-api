@@ -329,7 +329,7 @@ func TestMenuCallbacksAllReturnKeyboard(t *testing.T) {
 		MenuTransfer,
 		MenuHelp,
 		MenuActionDropStatus,
-		"nailao_menu:不存在的动作",
+		"qqbot_menu:不存在的动作",
 	}
 	for _, data := range pureCallbacks {
 		content, kb := HandleMenuCallback(data, "TEST_OPENID", "TEST_GROUP")
@@ -344,7 +344,7 @@ func TestMenuCallbacksAllReturnKeyboard(t *testing.T) {
 
 // TestUnknownCallbackFallsBackToMain 未知回调回落主菜单
 func TestUnknownCallbackFallsBackToMain(t *testing.T) {
-	content, kb := HandleMenuCallback("nailao_menu:garbage", "X", "G")
+	content, kb := HandleMenuCallback("qqbot_menu:garbage", "X", "G")
 	if !strings.Contains(content, "功能菜单") {
 		t.Fatalf("未知回调应回落到主菜单，实际文案: %q", content)
 	}

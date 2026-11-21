@@ -79,6 +79,8 @@ var inviteRewardOptionKeys = map[string]struct{}{
 	"invite_reward.rebate_trigger":             {},
 	"invite_reward.transfer_min_quota":         {},
 	"invite_reward.transfer_min_quota_display": {},
+	"invite_reward.recharge_sources":           {},
+	"invite_reward.redemption_code_names":      {},
 }
 
 func isInviteRewardOptionKey(key string) bool {

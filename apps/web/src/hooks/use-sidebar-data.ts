@@ -20,9 +20,9 @@ import {
   Activity,
   FileText,
   FlaskConical,
+  Gift,
   Key,
   LayoutDashboard,
-  ListTodo,
   MessageSquare,
   Settings,
   Shield,
@@ -169,13 +169,6 @@ export function useSidebarData(): SidebarData {
                 url: '/usage-logs/common',
                 icon: FileText,
               },
-              {
-                title: t('Task Logs'),
-                url: '/usage-logs/task',
-                activeUrls: ['/usage-logs/drawing'],
-                configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-                icon: ListTodo,
-              },
               ...(pricingEnabled
                 ? [
                     {
@@ -195,6 +188,11 @@ export function useSidebarData(): SidebarData {
                 url: '/wallet',
                 icon: Wallet,
                 badge: walletBalance ?? undefined,
+              },
+              {
+                title: t('Invitation Rewards'),
+                url: '/invitation-rewards',
+                icon: Gift,
               },
               { title: t('Profile'), url: '/profile', icon: User },
             ],

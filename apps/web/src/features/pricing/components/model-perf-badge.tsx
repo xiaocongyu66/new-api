@@ -20,23 +20,24 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSuccessRateDotClass } from '@/features/performance-metrics/lib/format'
+import type {
+  PerfModelRecentPoint,
+  PerfModelSummary,
+} from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
 
-// One point of the downsampled hourly timeline the model-square card combo
-// chart draws. ts is a unix second; latency_ms is the bucket mean.
-export type ModelPerfTrendPoint = {
-  ts: number
-  latency_ms: number
-  success_rate: number
-}
+// The card chart consumes the summary endpoint's hourly point shape directly.
+export type ModelPerfTrendPoint = PerfModelRecentPoint
 
-export type ModelPerfBadgeData = {
-  avg_latency_ms: number
-  success_rate: number
-  avg_tps: number
-  recent_success_rates?: number[]
-  recent_series?: ModelPerfTrendPoint[]
-}
+export type ModelPerfBadgeData = Pick<
+  PerfModelSummary,
+  | 'avg_latency_ms'
+  | 'success_rate'
+  | 'avg_tps'
+  | 'recent_success_rates'
+  | 'recent_series'
+  | 'source'
+>
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   perf: ModelPerfBadgeData | undefined
@@ -47,8 +48,8 @@ function formatCompactNumber(value: number): string {
   return value > 1 ? String(Math.round(value)) : value.toFixed(1)
 }
 
-function formatCompactLatency(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return '—'
+function formatCompactLatency(ms: number | null): string {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return '—'
   if (ms >= 1_000) return `${formatCompactNumber(ms / 1_000)}s`
   return `${formatCompactNumber(ms)}ms`
 }

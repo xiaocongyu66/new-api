@@ -393,6 +393,10 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+	// IsSystem marks a channel-test / probe log: it is attributed to the
+	// system account and never carries a billable quota, so these entries do
+	// not pollute any user's usage totals.
+	IsSystem bool `json:"is_system"`
 }
 
 func RecordConsumeLog(c contract.Context, userId int, params RecordConsumeLogParams) {
@@ -401,6 +405,14 @@ func RecordConsumeLog(c contract.Context, userId int, params RecordConsumeLogPar
 	}
 	logger.LogInfo(c.Context(), fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
 	username := c.GetString("username")
+	// Channel-test / probe entries are system work: attribute them to the
+	// system account and force a zero quota so they never show up as a user's
+	// own spend.
+	if params.IsSystem {
+		username = "系统"
+		params.Quota = 0
+		userId = 0
+	}
 	// 画像接线必须在 Other 序列化之前：attachInsight 会把画像结果写进
 	// params.Other（other.insight），同时累加用户画像聚合与复核样本。
 	// Fiber 移植（#488）时这里丢了一行调用，导致画像管道整体停摆两周。

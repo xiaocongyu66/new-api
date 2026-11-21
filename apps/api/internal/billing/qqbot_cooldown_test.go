@@ -39,19 +39,19 @@ func TestCheckCooldownScopedPerCommand(t *testing.T) {
 	s.CommandCooldownSeconds = 20
 
 	user := "scoped-user"
-	assert.NoError(t, CheckCooldown(user, "nailao_rp_grab"), "first grab passes")
-	assert.Error(t, CheckCooldown(user, "nailao_rp_grab"), "immediate re-click of same command is blocked")
-	assert.NoError(t, CheckCooldown(user, "nailao_rp_detail"), "other button unaffected")
+	assert.NoError(t, CheckCooldown(user, "qqbot_rp_grab"), "first grab passes")
+	assert.Error(t, CheckCooldown(user, "qqbot_rp_grab"), "immediate re-click of same command is blocked")
+	assert.NoError(t, CheckCooldown(user, "qqbot_rp_detail"), "other button unaffected")
 	assert.NoError(t, CheckCooldown(user, "/余额"), "query command unaffected")
 	assert.NoError(t, CheckCooldown(user, ""), "empty scope never blocks")
 
-	// 同一作用域内不同红包 id 共享冷却（截断自 nailao_rp_grab:<id>）
-	assert.Error(t, CheckCooldown(user, commandScope("nailao_rp_grab:42")))
+	// 同一作用域内不同红包 id 共享冷却（截断自 qqbot_rp_grab:<id>）
+	assert.Error(t, CheckCooldown(user, commandScope("qqbot_rp_grab:42")))
 	// @ 提及前缀不改变作用域
 	assert.Equal(t, "/签到", commandScope("@bot /签到"))
 	// 真实消息里提及是 XML 标签：偷奶酪必须带目标提及，剥标签后作用域应为指令本身
 	assert.Equal(t, "偷奶酪", commandScope(`<qqbot-at-user id="BOT" /> 偷奶酪 <qqbot-at-user id="VICTIM" />`))
-	assert.Equal(t, "nailao_rp_grab", commandScope("nailao_rp_grab:17"))
+	assert.Equal(t, "qqbot_rp_grab", commandScope("qqbot_rp_grab:17"))
 }
 
 // 冷却只针对指令：普通聊天（包括会触发掉落的聊天）不进冷却闸。

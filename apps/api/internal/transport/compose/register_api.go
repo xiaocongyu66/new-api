@@ -363,6 +363,8 @@ func SetApiRouter(router contract.Engine) {
 		{
 			ratioSyncRoute.GET("/channels", handler.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", handler.FetchUpstreamRatios)
+			ratioSyncRoute.POST("/analysis", handler.PricingAnalysis)
+			ratioSyncRoute.GET("/fluctuation", handler.PriceFluctuation)
 		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
@@ -397,6 +399,7 @@ func SetApiRouter(router contract.Engine) {
 		{
 			redemptionRoute.GET("/", billing.GetAllRedemptions)
 			redemptionRoute.GET("/search", billing.SearchRedemptions)
+			redemptionRoute.GET("/names", billing.GetRedemptionNames)
 			redemptionRoute.GET("/:id", billing.GetRedemption)
 			redemptionRoute.POST("/", billing.AddRedemption)
 			redemptionRoute.PUT("/", billing.UpdateRedemption)
