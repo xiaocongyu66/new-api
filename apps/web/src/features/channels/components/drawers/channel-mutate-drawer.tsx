@@ -29,7 +29,6 @@ import {
   Sparkles,
   Trash2,
   Copy,
-  ChevronDown,
   FileText,
   Eraser,
   Plus,
@@ -87,7 +86,6 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'

@@ -256,11 +256,22 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
 	if len(messages) > 0 {
-		if openAIRequest, ok := request.(*dto.GeneralOpenAIRequest); ok {
-			openAIRequest.Messages = messages
+		switch req := request.(type) {
+		case *dto.GeneralOpenAIRequest:
+			req.Messages = messages
 			// Interactive tests need room for reasoning plus the final answer;
 			// the fixed channel probe budget would truncate thinking models.
-			openAIRequest.MaxTokens = lo.ToPtr(uint(2048))
+			req.MaxTokens = lo.ToPtr(uint(2048))
+			req.MaxCompletionTokens = lo.ToPtr(uint(2048))
+		case *dto.OpenAIResponsesRequest:
+			// Responses-format channels (Codex) carry the prompt in
+			// Instructions/Input instead of Messages.
+			encoded, err := common.Marshal(messages)
+			if err != nil {
+				return testResult{context: c, localErr: err}
+			}
+			req.Input = encoded
+			req.MaxOutputTokens = lo.ToPtr(uint(2048))
 		}
 	}
 

@@ -40,7 +40,7 @@ const (
 // JailbreakBinding so the relay hot path can index by channel/model.
 type JailbreakProfile struct {
 	Id            int            `json:"id"`
-	Name          string         `json:"name" gorm:"size:64;not null;uniqueIndex:uk_jailbreak_name,where:deleted_at IS NULL"`
+	Name          string         `json:"name" gorm:"size:64;not null;uniqueIndex:uk_jailbreak_name"`
 	Description   string         `json:"description,omitempty" gorm:"type:varchar(255)"`
 	Kind          string         `json:"kind" gorm:"size:16"`
 	Prompt        string         `json:"prompt" gorm:"type:text"`
@@ -48,7 +48,6 @@ type JailbreakProfile struct {
 	ChannelModels string         `json:"channel_models" gorm:"type:text"`
 	Mode          string         `json:"mode" gorm:"size:16;not null"`
 	Priority      int            `json:"priority" gorm:"not null"`
-	Force         bool           `json:"force" gorm:"not null"`
 	Enabled       bool           `json:"enabled" gorm:"not null"`
 	CreatedTime   int64          `json:"created_time" gorm:"bigint"`
 	UpdatedTime   int64          `json:"updated_time" gorm:"bigint"`
@@ -144,6 +143,22 @@ func UpdateJailbreakProfile(profile *JailbreakProfile, channels []int, models []
 
 func DeleteJailbreakProfileById(id int) error {
 	err := dbx.DB.Transaction(func(tx *gorm.DB) error {
+		var profile JailbreakProfile
+		if err := tx.First(&profile, id).Error; err != nil {
+			return err
+		}
+		// Free the unique name for reuse: MySQL cannot enforce a partial
+		// unique index, so soft-deleted rows would otherwise keep the name.
+		suffix := "#deleted#" + strconv.Itoa(id)
+		base := profile.Name
+		if len([]rune(base))+len(suffix) > 64 {
+			base = string([]rune(base)[:64-len(suffix)])
+		}
+		if err := tx.Model(&JailbreakProfile{}).
+			Where("id = ?", id).
+			Update("name", base+suffix).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("profile_id = ?", id).Delete(&JailbreakBinding{}).Error; err != nil {
 			return err
 		}
@@ -204,17 +219,19 @@ type JailbreakRule struct {
 	Headers  map[string]interface{}
 	Mode     string
 	Priority int
-	Force    bool
 }
 
 type jailbreakSnapshot struct {
 	channelRules      map[int][]JailbreakRule
 	modelRules        map[string][]JailbreakRule
-	channelModelRules map[int]map[string]JailbreakRule
+	channelModelRules map[int]map[string][]JailbreakRule
 	expiresAt         time.Time
 }
 
-const jailbreakSnapshotTTL = 30 * time.Second
+const (
+	jailbreakSnapshotTTL      = 30 * time.Second
+	jailbreakSnapshotErrorTTL = 2 * time.Second
+)
 
 var jailbreakRulesCache struct {
 	mu   sync.RWMutex
@@ -241,7 +258,7 @@ func MatchJailbreakRules(channelID int, modelName string) []JailbreakRule {
 			matched[rule.Id] = rule
 		}
 		if byModel, ok := snap.channelModelRules[channelID]; ok {
-			if rule, ok := byModel[modelName]; ok {
+			for _, rule := range byModel[modelName] {
 				matched[rule.Id] = rule
 			}
 		}
@@ -296,17 +313,22 @@ func loadJailbreakSnapshot() *jailbreakSnapshot {
 		return snap
 	}
 
-	jailbreakRulesCache.mu.Lock()
-	defer jailbreakRulesCache.mu.Unlock()
-	if jailbreakRulesCache.snap != nil && time.Now().Before(jailbreakRulesCache.snap.expiresAt) {
-		return jailbreakRulesCache.snap
-	}
+	// Build outside the lock: a slow database must not serialize relay requests.
 	built, err := buildJailbreakSnapshot()
 	if err != nil {
 		common.SysError("jailbreak: load rules: " + err.Error())
-		return jailbreakRulesCache.snap
+		jailbreakRulesCache.mu.Lock()
+		if jailbreakRulesCache.snap != nil {
+			jailbreakRulesCache.snap.expiresAt = time.Now().Add(jailbreakSnapshotErrorTTL)
+		}
+		stale := jailbreakRulesCache.snap
+		jailbreakRulesCache.mu.Unlock()
+		return stale
 	}
+
+	jailbreakRulesCache.mu.Lock()
 	jailbreakRulesCache.snap = built
+	jailbreakRulesCache.mu.Unlock()
 	return built
 }
 
@@ -318,7 +340,7 @@ func buildJailbreakSnapshot() (*jailbreakSnapshot, error) {
 	snap := &jailbreakSnapshot{
 		channelRules:      make(map[int][]JailbreakRule),
 		modelRules:        make(map[string][]JailbreakRule),
-		channelModelRules: make(map[int]map[string]JailbreakRule),
+		channelModelRules: make(map[int]map[string][]JailbreakRule),
 		expiresAt:         time.Now().Add(jailbreakSnapshotTTL),
 	}
 	if len(profiles) == 0 {
@@ -346,7 +368,6 @@ func buildJailbreakSnapshot() (*jailbreakSnapshot, error) {
 			Prompt:   profile.Prompt,
 			Mode:     profile.Mode,
 			Priority: profile.Priority,
-			Force:    profile.Force,
 		}
 		if rule.Kind == "" {
 			rule.Kind = JailbreakKindPrompt
@@ -372,9 +393,9 @@ func buildJailbreakSnapshot() (*jailbreakSnapshot, error) {
 					continue
 				}
 				if snap.channelModelRules[id] == nil {
-					snap.channelModelRules[id] = make(map[string]JailbreakRule)
+					snap.channelModelRules[id] = make(map[string][]JailbreakRule)
 				}
-				snap.channelModelRules[id][name] = rule
+				snap.channelModelRules[id][name] = append(snap.channelModelRules[id][name], rule)
 			}
 		}
 	}
@@ -399,7 +420,6 @@ func buildJailbreakSnapshot() (*jailbreakSnapshot, error) {
 			Prompt:   profile.Prompt,
 			Mode:     profile.Mode,
 			Priority: profile.Priority,
-			Force:    profile.Force,
 		}
 		if kind == JailbreakKindHeader {
 			headers := map[string]interface{}{}

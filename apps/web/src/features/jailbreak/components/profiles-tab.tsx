@@ -64,10 +64,9 @@ export function ProfilesTab() {
         headers: profile.headers,
         mode: profile.mode,
         priority: profile.priority,
-        force: profile.force,
         enabled: !profile.enabled,
-        channels: [],
-        models: [],
+        channels: profile.channels,
+        models: profile.models,
         channel_models: profile.channel_models,
       }),
     onSuccess: () => invalidate(),
@@ -121,11 +120,6 @@ export function ProfilesTab() {
                 : 'Prepend'
           )}
         </Badge>
-        {profile.force ? (
-          <Badge variant='outline' className='ml-1'>
-            {t('Force')}
-          </Badge>
-        ) : null}
       </>
     )
 
@@ -180,13 +174,15 @@ export function ProfilesTab() {
                   <TableRow
                     key={profile.id}
                     tabIndex={0}
+                    role='button'
                     aria-label={t('Edit Request Rule')}
                     onClick={() => {
                       setEditing(profile)
                       setDrawerOpen(true)
                     }}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
                         setEditing(profile)
                         setDrawerOpen(true)
                       }
@@ -271,13 +267,15 @@ export function ProfilesTab() {
               <div
                 key={profile.id}
                 tabIndex={0}
+                role='button'
                 aria-label={t('Edit Request Rule')}
                 onClick={() => {
                   setEditing(profile)
                   setDrawerOpen(true)
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
                     setEditing(profile)
                     setDrawerOpen(true)
                   }

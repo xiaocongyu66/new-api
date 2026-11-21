@@ -12,7 +12,6 @@ export interface JailbreakProfile {
   channel_models: Record<string, string[]>
   mode: JailbreakMode
   priority: number
-  force: boolean
   enabled: boolean
   channels: number[]
   models: string[]
@@ -28,8 +27,7 @@ export interface JailbreakProfileInput {
   headers: string
   channel_models: Record<string, string[]>
   mode: JailbreakMode
-  priority: number
-  force: boolean
+  priority?: number
   enabled: boolean
   channels: number[]
   models: string[]
@@ -42,7 +40,6 @@ export interface JailbreakPreviewInput {
   extra_mode?: JailbreakMode
   extra_prompt?: string
   extra_headers?: string
-  extra_force?: boolean
   extra_name?: string
   channel_id: number
   model: string

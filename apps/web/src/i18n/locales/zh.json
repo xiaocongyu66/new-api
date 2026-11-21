@@ -6543,6 +6543,7 @@
     "Modify upstream request headers using this JSON.": "用这段 JSON 修改发往上游的请求头。",
     "Base system prompt simulates what the channel already sends; the rule is applied on top of it.": "基础 system prompt 用于模拟渠道已有的内容，规则会叠加在它之上。",
     "Completion tokens": "回复 token",
-    "The upstream returned no content (only reasoning or an empty response).": "上游只返回了思考过程或空响应，没有正文内容。"
+    "The upstream returned no content (only reasoning or an empty response).": "上游只返回了思考过程或空响应，没有正文内容。",
+    "Saved": "已保存"
   }
 }

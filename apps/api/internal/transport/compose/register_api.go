@@ -438,15 +438,18 @@ func SetApiRouter(router contract.Engine) {
 			prefillGroupRoute.DELETE("/:id", handler.DeletePrefillGroup)
 		}
 
+		// Request rules can rewrite upstream prompts and headers for every
+		// channel, so they sit behind the same channel permissions as the
+		// channel editor instead of plain admin role.
 		jailbreakRoute := apiRouter.Group("/jailbreak")
 		jailbreakRoute.Use(security.AdminAuth())
 		{
-			jailbreakRoute.GET("/", handler.GetJailbreakProfiles)
-			jailbreakRoute.POST("/", handler.CreateJailbreakProfile)
-			jailbreakRoute.PUT("/:id", handler.UpdateJailbreakProfile)
-			jailbreakRoute.DELETE("/:id", handler.DeleteJailbreakProfile)
-			jailbreakRoute.POST("/preview", handler.PreviewJailbreakPrompt)
-			jailbreakRoute.POST("/test", handler.TestJailbreakRequest)
+			jailbreakRoute.GET("/", security.RequirePermission(policy.ChannelRead), handler.GetJailbreakProfiles)
+			jailbreakRoute.POST("/preview", security.RequirePermission(policy.ChannelRead), handler.PreviewJailbreakPrompt)
+			jailbreakRoute.POST("/test", security.RequirePermission(policy.ChannelOperate), handler.TestJailbreakRequest)
+			jailbreakRoute.POST("/", security.RequirePermission(policy.ChannelSensitiveWrite), handler.CreateJailbreakProfile)
+			jailbreakRoute.PUT("/:id", security.RequirePermission(policy.ChannelSensitiveWrite), handler.UpdateJailbreakProfile)
+			jailbreakRoute.DELETE("/:id", security.RequirePermission(policy.ChannelSensitiveWrite), handler.DeleteJailbreakProfile)
 		}
 
 		mjRoute := apiRouter.Group("/mj")

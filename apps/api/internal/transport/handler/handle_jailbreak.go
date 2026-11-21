@@ -23,13 +23,19 @@ type jailbreakProfilePayload struct {
 	ChannelModels string   `json:"channel_models"`
 	Mode          string   `json:"mode"`
 	Priority      int      `json:"priority"`
-	Force         bool     `json:"force"`
 	Enabled       bool     `json:"enabled"`
 	Channels      []int    `json:"channels"`
 	Models        []string `json:"models"`
 	CreatedTime   int64    `json:"created_time"`
 	UpdatedTime   int64    `json:"updated_time"`
 }
+
+const (
+	maxJailbreakPromptRunes  = 65536
+	maxJailbreakHeadersRunes = 16384
+	maxJailbreakUserRunes    = 8000
+	maxJailbreakBindings     = 2000
+)
 
 func GetJailbreakProfiles(c contract.Context) {
 	profiles, err := channelpkg.ListJailbreakProfiles()
@@ -84,7 +90,6 @@ func GetJailbreakProfiles(c contract.Context) {
 			ChannelModels: profile.ChannelModels,
 			Mode:          profile.Mode,
 			Priority:      profile.Priority,
-			Force:         profile.Force,
 			Enabled:       profile.Enabled,
 			Channels:      profileChannels,
 			Models:        profileModels,
@@ -124,7 +129,6 @@ func CreateJailbreakProfile(c contract.Context) {
 		ChannelModels: payload.ChannelModels,
 		Mode:          payload.Mode,
 		Priority:      payload.Priority,
-		Force:         payload.Force,
 		Enabled:       payload.Enabled,
 	}
 	if err := channelpkg.CreateJailbreakProfile(&profile, payload.Channels, payload.Models); err != nil {
@@ -175,7 +179,6 @@ func UpdateJailbreakProfile(c contract.Context) {
 		payload.Priority = 100
 	}
 	profile.Priority = payload.Priority
-	profile.Force = payload.Force
 	profile.Enabled = payload.Enabled
 	if err := channelpkg.UpdateJailbreakProfile(profile, payload.Channels, payload.Models); err != nil {
 		common.CtxApiError(c, err)
@@ -210,6 +213,22 @@ func validateJailbreakPayload(payload *jailbreakProfilePayload) string {
 	payload.Mode = strings.TrimSpace(payload.Mode)
 	payload.Headers = strings.TrimSpace(payload.Headers)
 	payload.ChannelModels = strings.TrimSpace(payload.ChannelModels)
+	// Only the active kind's payload is stored; the drawer keeps the other
+	// field while switching tabs, so clear it here to avoid stale injection.
+	if payload.Kind == channelpkg.JailbreakKindHeader {
+		payload.Prompt = ""
+		if payload.Mode == "" {
+			payload.Mode = channelpkg.JailbreakModePrepend
+		}
+	} else {
+		payload.Headers = ""
+	}
+	if len([]rune(payload.Prompt)) > maxJailbreakPromptRunes {
+		return "系统提示词不能超过 65536 个字符"
+	}
+	if len([]rune(payload.Headers)) > maxJailbreakHeadersRunes {
+		return "请求头内容不能超过 16384 个字符"
+	}
 	if payload.ChannelModels == "" {
 		payload.ChannelModels = "{}"
 	}
@@ -217,7 +236,11 @@ func validateJailbreakPayload(payload *jailbreakProfilePayload) string {
 	if err := common.Unmarshal([]byte(payload.ChannelModels), &channelModels); err != nil {
 		return "渠道模型绑定必须是合法的 JSON 对象"
 	}
+	if len(channelModels) > 200 {
+		return "渠道绑定不能超过 200 个"
+	}
 	normalized := make(map[string][]string, len(channelModels))
+	totalBindings := 0
 	for key, names := range channelModels {
 		id, err := strconv.Atoi(strings.TrimSpace(key))
 		if err != nil || id <= 0 {
@@ -235,6 +258,10 @@ func validateJailbreakPayload(payload *jailbreakProfilePayload) string {
 			}
 			seen[name] = struct{}{}
 			clean = append(clean, name)
+		}
+		totalBindings += len(clean)
+		if totalBindings > maxJailbreakBindings {
+			return "模型绑定不能超过 2000 个"
 		}
 		if len(clean) > 0 {
 			normalized[strconv.Itoa(id)] = clean
@@ -296,7 +323,6 @@ type jailbreakPreviewPayload struct {
 	ExtraMode     string `json:"extra_mode"`
 	ExtraPrompt   string `json:"extra_prompt"`
 	ExtraHeaders  string `json:"extra_headers"`
-	ExtraForce    bool   `json:"extra_force"`
 	ExtraName     string `json:"extra_name"`
 	ExcludeRuleID int    `json:"exclude_rule_id"`
 }
@@ -310,6 +336,10 @@ func PreviewJailbreakPrompt(c contract.Context) {
 	model := strings.TrimSpace(payload.Model)
 	if model == "" {
 		common.CtxApiErrorMsg(c, "模型不能为空")
+		return
+	}
+	if len([]rune(payload.UserMessage)) > maxJailbreakUserRunes {
+		common.CtxApiErrorMsg(c, "测试用户消息不能超过 8000 个字符")
 		return
 	}
 	if payload.BaseSource != "" &&
@@ -359,7 +389,6 @@ func PreviewJailbreakPrompt(c contract.Context) {
 			Kind:   channelpkg.JailbreakKindPrompt,
 			Prompt: strings.TrimSpace(payload.ExtraPrompt),
 			Mode:   payload.ExtraMode,
-			Force:  payload.ExtraForce,
 		}
 	}
 	effective := relaycommon.PreviewEffectiveSystemPrompt(
@@ -405,7 +434,7 @@ type jailbreakTestPayload struct {
 	ExtraKind     string `json:"extra_kind"`
 	ExtraMode     string `json:"extra_mode"`
 	ExtraPrompt   string `json:"extra_prompt"`
-	ExtraForce    bool   `json:"extra_force"`
+	ExtraHeaders  string `json:"extra_headers"`
 	ExtraName     string `json:"extra_name"`
 	ExcludeRuleID int    `json:"exclude_rule_id"`
 }
@@ -419,6 +448,10 @@ func TestJailbreakRequest(c contract.Context) {
 	model := strings.TrimSpace(payload.Model)
 	if model == "" {
 		common.CtxApiErrorMsg(c, "模型不能为空")
+		return
+	}
+	if len([]rune(payload.UserMessage)) > maxJailbreakUserRunes {
+		common.CtxApiErrorMsg(c, "测试用户消息不能超过 8000 个字符")
 		return
 	}
 	if payload.ChannelID <= 0 {
@@ -438,6 +471,24 @@ func TestJailbreakRequest(c contract.Context) {
 		common.CtxApiError(c, err)
 		return
 	}
+	allowedModel := false
+	for _, name := range channel.GetModels() {
+		if strings.EqualFold(strings.TrimSpace(name), model) {
+			allowedModel = true
+			break
+		}
+	}
+	if !allowedModel {
+		common.CtxApiErrorMsg(c, "该模型未配置在此渠道上")
+		return
+	}
+	extraHeaders := map[string]interface{}{}
+	if strings.TrimSpace(payload.ExtraHeaders) != "" {
+		if err := common.Unmarshal([]byte(payload.ExtraHeaders), &extraHeaders); err != nil {
+			common.CtxApiErrorMsg(c, "请求头必须是合法的 JSON 对象")
+			return
+		}
+	}
 
 	var extraRule *channelpkg.JailbreakRule
 	if strings.TrimSpace(payload.ExtraPrompt) != "" && payload.ExtraKind == channelpkg.JailbreakKindPrompt {
@@ -446,7 +497,6 @@ func TestJailbreakRequest(c contract.Context) {
 			Kind:   channelpkg.JailbreakKindPrompt,
 			Prompt: strings.TrimSpace(payload.ExtraPrompt),
 			Mode:   payload.ExtraMode,
-			Force:  payload.ExtraForce,
 		}
 	}
 	effective := relaycommon.PreviewEffectiveSystemPrompt(
@@ -470,7 +520,24 @@ func TestJailbreakRequest(c contract.Context) {
 		return
 	}
 
-	result := testChannel(c.Context(), channel, testUserID, model, "", false, messages)
+	testChannelValue := *channel
+	mergedHeaders := map[string]interface{}{}
+	for key, value := range channel.GetHeaderOverride() {
+		mergedHeaders[key] = value
+	}
+	for key, value := range extraHeaders {
+		mergedHeaders[key] = value
+	}
+	if len(mergedHeaders) > 0 {
+		encoded, err := common.Marshal(mergedHeaders)
+		if err != nil {
+			common.CtxApiError(c, err)
+			return
+		}
+		headerJSON := string(encoded)
+		testChannelValue.HeaderOverride = &headerJSON
+	}
+	result := testChannel(c.Context(), &testChannelValue, testUserID, model, "", false, messages)
 	if result.localErr != nil {
 		common.CtxApiErrorMsg(c, result.localErr.Error())
 		return
@@ -510,6 +577,6 @@ func TestJailbreakRequest(c contract.Context) {
 		"finish_reason":     finishReason,
 		"prompt_tokens":     promptTokens,
 		"completion_tokens": completionTokens,
-		"response":          string(result.responseBody),
+		"headers":           mergedHeaders,
 	})
 }

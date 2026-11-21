@@ -64,7 +64,7 @@ const EMPTY_FORM: JailbreakProfileInput = {
   headers: '',
   channel_models: {},
   mode: 'prepend',
-  force: false,
+  priority: 100,
   enabled: true,
   channels: [],
   models: [],
@@ -207,7 +207,7 @@ export function ProfileDrawer({
             prompt: profile.prompt,
             headers: profile.headers,
             mode: profile.mode,
-            force: profile.force,
+            priority: profile.priority,
             enabled: profile.enabled,
             channels: [],
             models: [],
@@ -290,6 +290,7 @@ export function ProfileDrawer({
       testJailbreakRequest({
         ...buildPreviewPayload(),
         user_message: testUserMessage,
+        extra_headers: form.kind === 'header' ? form.headers : '',
       }),
     onSuccess: (data) => {
       if (!data) return
@@ -297,7 +298,7 @@ export function ProfileDrawer({
         kind: form.kind,
         rules: [],
         prompt: data.content,
-        headers: null,
+        headers: data.headers,
         override: false,
         source: 'response',
         finish_reason: data.finish_reason,

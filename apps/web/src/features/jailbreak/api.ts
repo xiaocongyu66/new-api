@@ -80,7 +80,7 @@ export interface JailbreakTestResult {
   finish_reason: string
   prompt_tokens: number
   completion_tokens: number
-  response: string
+  headers: Record<string, unknown> | null
 }
 
 export async function testJailbreakRequest(payload: {
@@ -92,7 +92,7 @@ export async function testJailbreakRequest(payload: {
   extra_kind?: string
   extra_mode?: string
   extra_prompt?: string
-  extra_force?: boolean
+  extra_headers?: string
   extra_name?: string
   exclude_rule_id?: number
 }): Promise<JailbreakTestResult> {

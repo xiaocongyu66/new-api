@@ -49,9 +49,9 @@ type EffectiveSystemPrompt struct {
 // holds inside each layer (preset first, then plain text, then per-model
 // entries for channels).
 //
-// DB-managed jailbreak rules are then merged on top by priority. A rule with
-// Force set applies even when a token binding won; normal rules are skipped in
-// that case so a user's explicit token prompt is not silently rewritten.
+// DB-managed jailbreak rules are then merged on top of the resolved prompt.
+// Rules apply in ascending priority order, so the highest-priority rule wins
+// for Replace while Prepend/Append compose deterministically.
 func ResolveEffectiveSystemPrompt(c contract.Context, info *RelayInfo) EffectiveSystemPrompt {
 	if info == nil {
 		return EffectiveSystemPrompt{}
@@ -118,7 +118,11 @@ func applyJailbreakRules(c contract.Context, info *RelayInfo, modelName string, 
 	prompt := resolved.Prompt
 	override := resolved.Override
 	applied := make([]string, 0, len(rules))
-	for _, rule := range rules {
+	for i := len(rules) - 1; i >= 0; i-- {
+		rule := rules[i]
+		if rule.Kind != channelpkg.JailbreakKindPrompt {
+			continue
+		}
 		if excludeID > 0 && rule.Id == excludeID {
 			continue
 		}
@@ -187,7 +191,7 @@ func PreviewEffectiveHeaders(channelID int, modelName string, baseHeaders map[st
 		if excludeID > 0 && rule.Id == excludeID {
 			continue
 		}
-		for key, value := range rule.Headers {
+		for key, value := range sanitizeHeaderOverrideMap(rule.Headers) {
 			merged[key] = value
 		}
 		applied = append(applied, rule.Name)
