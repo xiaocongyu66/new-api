@@ -75,7 +75,6 @@ var (
 	OnApplyPaymentOption func(key, value string) error
 	OnSeedUsageOptions   func() map[string]string
 	OnApplyUsageOption   func(key, value string) error
-	OnSeedEgressOptions  func() map[string]string
 	OnApplyEgressOption  func(key, value string) error
 	OnSeedRatioOptions   func() map[string]string
 	OnApplyRatioOption   func(key, value string) error
@@ -356,7 +355,7 @@ wallhaven|https://wallhaven.clbug.com/api/v1/search?q={keyword}&categories=010&p
 	// init(); this avoids direct imports and cycles while keeping behavior in catalog.
 	for _, seed := range []func() map[string]string{
 		OnSeedCatalogOptions, OnSeedPaymentOptions, OnSeedUsageOptions,
-		OnSeedEgressOptions, OnSeedRatioOptions,
+		OnSeedRatioOptions,
 	} {
 		if seed == nil {
 			continue
@@ -538,10 +537,6 @@ func ApplyOption(key string, value string) (err error) {
 			common.SMTPInsecureSkipVerify = boolValue
 		case "SMTPForceAuthLogin":
 			common.SMTPForceAuthLogin = boolValue
-		case "WorkerAllowHttpImageRequestEnabled":
-			if OnApplyEgressOption != nil {
-				err = OnApplyEgressOption(key, value)
-			}
 		case "DefaultUseAutoGroup":
 			if OnApplyResolveGroupSetting != nil {
 				_ = OnApplyResolveGroupSetting(key, value)
@@ -604,7 +599,7 @@ func ApplyOption(key string, value string) (err error) {
 		}
 		common.SMTPAccountPool = pool
 		common.RebuildSMTPSenderPool()
-	case "ServerAddress", "WorkerUrl", "WorkerValidKey":
+	case "ServerAddress":
 		if OnApplyEgressOption != nil {
 			err = OnApplyEgressOption(key, value)
 		}

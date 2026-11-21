@@ -153,7 +153,7 @@ const skipPatterns = [
   /^_copy$/, /^gpt-/, /^checkout\./, /^footer\./, /^\[?\{/,
   /^"default/, /^\/status\//, /^\/your\//, /^example\.com/,
   /^AZURE_/, /^AccessKey/, /^OAuth/, /^Client /, /^Webhook URL/,
-  /^API URL$/, /^Well-Known/, /^Worker URL$/, /^Uptime Kuma/,
+  /^API URL$/, /^Well-Known/, /^Uptime Kuma/,
   /^New API/, /^Baidu V2$/, /^Zhipu V4$/, /^Quota:$/,
 ]
 

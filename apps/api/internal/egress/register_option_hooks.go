@@ -1,39 +1,21 @@
 package egress
 
 import (
-	"strconv"
-
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/settings"
 )
 
-// Server address and worker options belong to this domain; settings keeps only
-// the generic option mechanism and reaches them through these nil-safe hooks
-// (same convention as catalog/resolve_group.go).
-func seedEgressOptions() map[string]string {
-	return map[string]string{
-		"WorkerUrl":                          WorkerUrl,
-		"WorkerValidKey":                     WorkerValidKey,
-		"WorkerAllowHttpImageRequestEnabled": strconv.FormatBool(WorkerAllowHttpImageRequestEnabled),
-	}
-}
-
+// ServerAddress belongs to this domain; settings keeps only the generic option
+// mechanism and reaches it through these nil-safe hooks (same convention as
+// catalog/resolve_group.go).
 func applyEgressOption(key, value string) error {
-	switch key {
-	case "ServerAddress":
+	if key == "ServerAddress" {
 		ServerAddress = value
-	case "WorkerUrl":
-		WorkerUrl = value
-	case "WorkerValidKey":
-		WorkerValidKey = value
-	case "WorkerAllowHttpImageRequestEnabled":
-		WorkerAllowHttpImageRequestEnabled = value == "true"
 	}
 	return nil
 }
 
 func init() {
-	settings.OnSeedEgressOptions = seedEgressOptions
 	settings.OnApplyEgressOption = applyEgressOption
 
 	// identity builds absolute links from ServerAddress but cannot import this
