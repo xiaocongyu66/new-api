@@ -785,9 +785,10 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 
 			var body struct {
-				Success bool            `json:"success"`
-				Data    json.RawMessage `json:"data"`
-				Message string          `json:"message"`
+				Success    bool               `json:"success"`
+				Data       json.RawMessage    `json:"data"`
+				Message    string             `json:"message"`
+				GroupRatio map[string]float64 `json:"group_ratio"`
 			}
 
 			if err := common.DecodeJson(bytes.NewReader(bodyBytes), &body); err != nil {
@@ -817,20 +818,22 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 
 			var pricingItems []struct {
-				ModelName                 string   `json:"model_name"`
-				QuotaType                 int      `json:"quota_type"`
-				ModelRatio                float64  `json:"model_ratio"`
-				ModelPrice                float64  `json:"model_price"`
-				CompletionRatio           float64  `json:"completion_ratio"`
-				CacheRatio                *float64 `json:"cache_ratio"`
-				CreateCacheRatio          *float64 `json:"create_cache_ratio"`
-				ImageRatio                *float64 `json:"image_ratio"`
-				AudioRatio                *float64 `json:"audio_ratio"`
-				AudioCompletionRatio      *float64 `json:"audio_completion_ratio"`
-				BillingMode               string   `json:"billing_mode"`
-				BillingExpr               string   `json:"billing_expr"`
-				BillingContextTier        string   `json:"billing_context_tier"`
-				BillingContextTierPerCall string   `json:"billing_context_tier_per_call"`
+				ModelName                 string             `json:"model_name"`
+				QuotaType                 int                `json:"quota_type"`
+				ModelRatio                float64            `json:"model_ratio"`
+				ModelPrice                float64            `json:"model_price"`
+				CompletionRatio           float64            `json:"completion_ratio"`
+				CacheRatio                *float64           `json:"cache_ratio"`
+				CreateCacheRatio          *float64           `json:"create_cache_ratio"`
+				ImageRatio                *float64           `json:"image_ratio"`
+				AudioRatio                *float64           `json:"audio_ratio"`
+				AudioCompletionRatio      *float64           `json:"audio_completion_ratio"`
+				BillingMode               string             `json:"billing_mode"`
+				BillingExpr               string             `json:"billing_expr"`
+				BillingContextTier        string             `json:"billing_context_tier"`
+				BillingContextTierPerCall string             `json:"billing_context_tier_per_call"`
+				EnableGroups              []string           `json:"enable_groups"`
+				GroupRatio                map[string]float64 `json:"group_ratio"`
 			}
 			if err := common.Unmarshal(body.Data, &pricingItems); err != nil {
 				logger.LogWarn(c.Context(), "unrecognized data format from "+chItem.Name+": "+err.Error())
@@ -846,6 +849,8 @@ func FetchUpstreamRatios(c contract.Context) {
 			audioRatioMap := make(map[string]float64)
 			audioCompletionRatioMap := make(map[string]float64)
 			modelPriceMap := make(map[string]float64)
+			enableGroupsMap := make(map[string]any)
+			modelGroupRatioMap := make(map[string]any)
 			billingModeMap := make(map[string]string)
 			billingExprMap := make(map[string]string)
 			billingContextTierMap := make(map[string]string)
@@ -873,6 +878,12 @@ func FetchUpstreamRatios(c contract.Context) {
 					if hasCallTier {
 						billingContextTierPerCallMap[item.ModelName] = item.BillingContextTierPerCall
 					}
+				}
+				if len(item.EnableGroups) > 0 {
+					enableGroupsMap[item.ModelName] = item.EnableGroups
+				}
+				if len(item.GroupRatio) > 0 {
+					modelGroupRatioMap[item.ModelName] = item.GroupRatio
 				}
 				if item.QuotaType == 1 {
 					modelPriceMap[item.ModelName] = item.ModelPrice
@@ -948,6 +959,18 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 			if len(billingContextTierPerCallMap) > 0 {
 				converted["billing_context_tier_per_call"] = valueMap(billingContextTierPerCallMap)
+			}
+			if len(enableGroupsMap) > 0 {
+				converted["enable_groups"] = enableGroupsMap
+			}
+			if len(modelGroupRatioMap) > 0 {
+				converted["model_group_ratio"] = modelGroupRatioMap
+			}
+			// Site-level group ratios live under the empty model name: the
+			// analysis needs them to turn the upstream's published price into
+			// the price actually charged for our key's group.
+			if len(body.GroupRatio) > 0 {
+				converted["group_ratio"] = map[string]any{"": body.GroupRatio}
 			}
 
 			ch <- upstreamResult{Name: uniqueName, Data: converted}

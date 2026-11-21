@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -28,6 +29,7 @@ import type {
 
 type Props = {
   row: PricingAnalysisRow | null
+  groupRatios: Record<string, number>
   onOpenChange: (open: boolean) => void
 }
 
@@ -122,6 +124,14 @@ function modeLabel(mode: string, t: (key: string) => string): string {
   }
 }
 
+// Tiered billing covers two very different charges; the raw billing_mode
+// ("tiered_expr") alone hides which one a channel uses.
+function billingLabel(channel: PricingAnalysisChannel, t: (key: string) => string): string {
+  if (channel.price_mode === 'per_call_tiered') return t('Tiered (per request)')
+  if (channel.price_mode === 'per_token_tiered') return t('Tiered (per token)')
+  return modeLabel(channel.billing_mode || channel.price_mode, t)
+}
+
 // A channel with neither price signal has no snapshot of its own: its cost is
 // unknown, not zero.
 function hasUpstreamPrice(channel: PricingAnalysisChannel): boolean {
@@ -159,12 +169,26 @@ function RevenueCell({
 
 function ChannelTable({
   channel,
+  groupRatios,
   t,
 }: {
   channel: PricingAnalysisChannel
+  groupRatios: Record<string, number>
   t: (key: string) => string
 }) {
   const priced = hasUpstreamPrice(channel)
+  const groups = channel.groups?.length ? channel.groups : []
+  const [activeGroup, setActiveGroup] = useState(groups[0] ?? '')
+  // The site charges base price × group ratio, so the local side of every
+  // comparison must be scaled by the serving group's ratio.
+  const groupRatio = activeGroup ? (groupRatios[activeGroup] ?? 1) : 1
+  const localPrice = (value: number | null | undefined) =>
+    value == null ? null : value * groupRatio
+  const groupMargin = (local: number | null | undefined, upstream: number | null | undefined) => {
+    const eff = localPrice(local)
+    if (eff == null || upstream == null || eff <= 0) return null
+    return ((eff - upstream) / eff) * 100
+  }
   const hasContextTiers =
     channel.price_mode === 'per_token_tiered' ||
     channel.price_mode === 'per_call_tiered'
@@ -180,7 +204,7 @@ function ChannelTable({
         </div>
         {priced ? (
           <span className='text-muted-foreground shrink-0 text-[10px]'>
-            {modeLabel(channel.billing_mode || channel.price_mode, t)}
+            {billingLabel(channel, t)}
           </span>
         ) : (
           <span className='shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400'>
@@ -188,6 +212,38 @@ function ChannelTable({
           </span>
         )}
       </div>
+
+      {priced && (groups.length > 0 || (channel.upstream_groups?.length ?? 0) > 0) && (
+        <div className='flex flex-wrap items-center gap-2 border-b px-2 py-1 text-[10px]'>
+          {groups.length > 0 && (
+            <div className='flex flex-wrap items-center gap-1'>
+              <span className='text-muted-foreground'>{t('Site group')}</span>
+              {groups.map((group) => (
+                <button
+                  key={group}
+                  type='button'
+                  onClick={() => setActiveGroup(group)}
+                  className={cn(
+                    'rounded px-1.5 py-0.5 tabular-nums',
+                    group === activeGroup
+                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                  )}
+                >
+                  {group} ×{(groupRatios[group] ?? 1).toFixed(2)}
+                </button>
+              ))}
+            </div>
+          )}
+          {(channel.upstream_groups?.length ?? 0) > 0 && (
+            <span className='text-muted-foreground ml-auto'>
+              {t('Upstream group')} {channel.upstream_groups?.join(' / ')} ×
+              {channel.upstream_group_ratio.toFixed(2)}
+              {channel.upstream_group_ambiguous ? ` (${t('highest applied')})` : ''}
+            </span>
+          )}
+        </div>
+      )}
 
       <table className='w-full table-fixed border-collapse text-[10px]'>
         <colgroup>
@@ -221,9 +277,9 @@ function ChannelTable({
                   <td className={CELL}>
                     {t('Context')} {formatContext(w.context)}
                   </td>
-                  <td className={CELL_NUM}>{formatMoney(w.local)}</td>
+                  <td className={CELL_NUM}>{formatMoney(localPrice(w.local))}</td>
                   <td className={CELL_NUM}>{formatMoney(w.upstream)}</td>
-                  <td className={CELL_NUM}>{formatGroupRatio(w.group_ratio)}</td>
+                  <td className={CELL_NUM}>{`×${groupRatio.toFixed(2)}`}</td>
                   <td className={CELL_NUM}>
                     {w.requests == null ? '—' : formatInteger(w.requests)}
                   </td>
@@ -236,18 +292,16 @@ function ChannelTable({
                     {formatMoney(w.profit)}
                   </td>
                   <td className={cn(CELL_NUM, valueTone(w.margin_pct))}>
-                    {formatPercent(w.margin_pct)}
+                    {formatPercent(groupMargin(w.local, w.upstream) ?? w.margin_pct)}
                   </td>
                 </tr>
               ))
             : priced && (
                 <tr>
-                  <td className={CELL}>
-                    {modeLabel(channel.billing_mode || channel.price_mode, t)}
-                  </td>
-                  <td className={CELL_NUM}>{formatMoney(canonicalWindow?.local)}</td>
+                  <td className={CELL}>{billingLabel(channel, t)}</td>
+                  <td className={CELL_NUM}>{formatMoney(localPrice(canonicalWindow?.local))}</td>
                   <td className={CELL_NUM}>{formatMoney(canonicalWindow?.upstream)}</td>
-                  <td className={CELL_NUM}>{formatGroupRatio(channel.group_ratio)}</td>
+                  <td className={CELL_NUM}>{`×${groupRatio.toFixed(2)}`}</td>
                   <td className={CELL_NUM}>—</td>
                   <td className={CELL_NUM}>—</td>
                   <td className={CELL_NUM}>—</td>
@@ -279,7 +333,7 @@ function ChannelTable({
   )
 }
 
-export function PricingAnalysisDialog({ row, onOpenChange }: Props) {
+export function PricingAnalysisDialog({ row, groupRatios, onOpenChange }: Props) {
   const { t } = useTranslation()
   const open = row !== null
 
@@ -337,6 +391,7 @@ export function PricingAnalysisDialog({ row, onOpenChange }: Props) {
                 <ChannelTable
                   key={`${channel.channel_id}-${channel.model_name}`}
                   channel={channel}
+                  groupRatios={groupRatios}
                   t={t}
                 />
               ))}

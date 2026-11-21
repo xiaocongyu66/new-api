@@ -11,6 +11,7 @@ import (
 	billing "github.com/QuantumNous/new-api/internal/billing"
 	priceexpr "github.com/QuantumNous/new-api/internal/billing/price_expression"
 	channel "github.com/QuantumNous/new-api/internal/catalog"
+	ratio_setting "github.com/QuantumNous/new-api/internal/catalog/configure_ratio"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
@@ -281,9 +282,10 @@ func PricingAnalysis(c contract.Context) {
 	}
 
 	_ = c.JSON(http.StatusOK, common.H{"success": true, "message": "", "data": dto.PricingAnalysisData{
-		Windows: windows,
-		Vendors: allVendorsDTO(vendorRows),
-		Rows:    rows,
+		Windows:     windows,
+		Vendors:     allVendorsDTO(vendorRows),
+		Rows:        rows,
+		GroupRatios: ratio_setting.GetGroupRatioCopy(),
 	}})
 }
 
@@ -319,6 +321,68 @@ func aggregateChannelLogs(expr string, tier map[[3]any][]pricingSample, channelI
 	return st, found
 }
 
+// snapshotGroupRatios returns the upstream site's group_ratio map persisted
+// with the source's latest snapshot (stored under the empty model name).
+func snapshotGroupRatios(snapshotBySource map[string]map[string]map[string]any, sourceKey string) map[string]float64 {
+	out := map[string]float64{}
+	fields := snapshotBySource[sourceKey][""]
+	raw, ok := fields["group_ratio"].(map[string]any)
+	if !ok {
+		return out
+	}
+	for group, value := range raw {
+		if v, ok := asFloat64(value); ok {
+			out[group] = v
+		}
+	}
+	return out
+}
+
+// upstreamGroupMultiplier derives the multiplier the upstream applies to its
+// published price for the group our key is served from. /api/pricing exposes a
+// per-model enable_groups list plus a site-level group_ratio map, so a model
+// sold in exactly one group has an exact multiplier; a model sold in several
+// groups is ambiguous and the highest candidate ratio is used (conservative
+// cost estimate), with ambiguous=true surfaced to the UI.
+func upstreamGroupMultiplier(fields map[string]any, siteGroupRatio map[string]float64) (ratio float64, groups []string, ambiguous bool) {
+	if raw, ok := fields["enable_groups"].([]any); ok {
+		for _, item := range raw {
+			if name, ok := item.(string); ok && name != "" {
+				groups = append(groups, name)
+			}
+		}
+	}
+	if len(groups) == 0 {
+		return 1, nil, false
+	}
+	modelRatios, _ := fields["model_group_ratio"].(map[string]any)
+	lookup := func(group string) (float64, bool) {
+		if modelRatios != nil {
+			if v, ok := asFloat64(modelRatios[group]); ok {
+				return v, true
+			}
+		}
+		v, ok := siteGroupRatio[group]
+		return v, ok
+	}
+	if len(groups) == 1 {
+		if v, ok := lookup(groups[0]); ok {
+			return v, groups, false
+		}
+		return 1, groups, false
+	}
+	best := 0.0
+	for _, group := range groups {
+		if v, ok := lookup(group); ok && v > best {
+			best = v
+		}
+	}
+	if best == 0 {
+		return 1, groups, true
+	}
+	return best, groups, true
+}
+
 // buildChannelEntry assembles the analysis entry for one bound (channel,
 // model) pair: revenue from usage aggregates, upstream price from the
 // channel's own snapshot, and cost from exact per-log pricing with a
@@ -330,17 +394,22 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 	sourceKey := channelSourceKey(ch.ChannelName, ch.ChannelID)
 	upFields := resolveUpstreamFields(modelName, snapshotBySource[sourceKey], ch.ModelMapping)
 	upstreamExpr, _ := modelExpr(upFields)
+	upstreamRatio, upstreamGroups, upstreamAmbiguous := upstreamGroupMultiplier(upFields, snapshotGroupRatios(snapshotBySource, sourceKey))
 	entry := dto.AnalysisChannel{
-		ChannelID:   ch.ChannelID,
-		ChannelName: ch.ChannelName,
-		ChannelType: ch.ChannelType,
-		ModelName:   modelName,
-		PriceMode:   priceModeFromFields(upstreamExpr, upFields),
-		BillingMode: billingModeFromFields(upFields),
-		Requests:    ug.Requests,
-		Tokens:      ug.Tokens,
-		Revenue:     revenue,
-		Windows:     channelWindows(localFields[modelName], upFields, windows, ch.ChannelID, modelName, tierUsageMap),
+		ChannelID:              ch.ChannelID,
+		ChannelName:            ch.ChannelName,
+		ChannelType:            ch.ChannelType,
+		ModelName:              modelName,
+		PriceMode:              priceModeFromFields(upstreamExpr, upFields),
+		BillingMode:            billingModeFromFields(upFields),
+		Requests:               ug.Requests,
+		Tokens:                 ug.Tokens,
+		Revenue:                revenue,
+		Groups:                 ch.Groups,
+		UpstreamGroups:         upstreamGroups,
+		UpstreamGroupRatio:     upstreamRatio,
+		UpstreamGroupAmbiguous: upstreamAmbiguous,
+		Windows:                channelWindows(localFields[modelName], upFields, windows, ch.ChannelID, modelName, tierUsageMap, upstreamRatio),
 	}
 	if upstreamExpr == "" {
 		return entry, 0, false
@@ -348,7 +417,7 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 	var chCost float64
 	logs, hasLogs := aggregateChannelLogs(upstreamExpr, tierUsageMap, ch.ChannelID, modelName, windows)
 	if hasLogs {
-		chCost = logs.Cost
+		chCost = logs.Cost * upstreamRatio
 		subRevenue := float64(logs.SubQuota) / float64(common.QuotaPerUnit)
 		entry.SubscriptionRevenue = &subRevenue
 		if logs.TokenWeight > 0 {
@@ -360,10 +429,10 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 		// per-token prices with total tokens under the representative
 		// 1.25x prompt/completion mix.
 		if strings.Contains(upstreamExpr, "fixed(") {
-			chCost = *cwUsd * float64(ug.Requests)
+			chCost = *cwUsd * float64(ug.Requests) * upstreamRatio
 		} else {
 			unit := *cwUsd / float64(canonicalWindow+canonicalWindow/4)
-			chCost = unit * float64(ug.Tokens)
+			chCost = unit * float64(ug.Tokens) * upstreamRatio
 		}
 	} else {
 		return entry, 0, false
@@ -383,7 +452,10 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 // (channel/model/window); their real token counts drive per-window revenue,
 // cost and the token-weighted group ratio, so the money columns reflect the
 // actual request mix instead of the representative window.
-func channelWindows(localFields, upstreamFields map[string]any, windows []int, channelID int, modelName string, tier map[[3]any][]pricingSample) []dto.AnalysisChannelWindow {
+func channelWindows(localFields, upstreamFields map[string]any, windows []int, channelID int, modelName string, tier map[[3]any][]pricingSample, upstreamRatio float64) []dto.AnalysisChannelWindow {
+	if upstreamRatio == 0 {
+		upstreamRatio = 1
+	}
 	localExpr, _ := modelExpr(localFields)
 	upstreamExpr, _ := modelExpr(upstreamFields)
 	out := make([]dto.AnalysisChannelWindow, 0, len(windows))
@@ -393,7 +465,8 @@ func channelWindows(localFields, upstreamFields map[string]any, windows []int, c
 			entry.Local = localUsd
 		}
 		if upstreamUsd := evalUsd(upstreamExpr, w); upstreamUsd != nil {
-			entry.Upstream = upstreamUsd
+			scaled := *upstreamUsd * upstreamRatio
+			entry.Upstream = &scaled
 		}
 		if entry.Local != nil && entry.Upstream != nil && *entry.Local > 0 {
 			diff := (*entry.Upstream - *entry.Local) / *entry.Local * 100
@@ -405,7 +478,7 @@ func channelWindows(localFields, upstreamFields map[string]any, windows []int, c
 		if len(samples) > 0 {
 			requests := int64(len(samples))
 			entry.Requests = &requests
-			cost := windowCostUSD(upstreamExpr, samples)
+			cost := windowCostUSD(upstreamExpr, samples) * upstreamRatio
 			entry.Cost = &cost
 			var quota, subQuota int64
 			var tokenWeight, groupWeighted float64
@@ -467,14 +540,17 @@ func channelSourceKey(name string, id int) string {
 }
 
 // upstreamAliasCandidates returns the ordered fallback names for a plaza alias
-// whose upstream snapshot name may differ from the local name. Exact names win;
-// then the channel's own model_mapping (the admin's explicit statement of what
-// this channel serves), then known prefixes/suffixes ([套餐], a/, [次]).
+// whose upstream snapshot name may differ from the local name. A channel's own
+// model_mapping wins over everything: it is the admin's explicit statement of
+// which upstream model this local name calls, so the upstream catalog entry of
+// the same name must not override it. Exact name, then known prefixes/suffixes
+// ([套餐], a/, [次]), are the fallbacks for channels without a mapping entry.
 func upstreamAliasCandidates(modelName string, mapping map[string]string) []string {
-	candidates := []string{modelName}
+	candidates := make([]string, 0, 5)
 	if mapped := mapping[modelName]; mapped != "" {
 		candidates = append(candidates, mapped)
 	}
+	candidates = append(candidates, modelName)
 	if name := strings.TrimSpace(strings.TrimPrefix(modelName, "[套餐]")); name != "" && name != modelName {
 		candidates = append(candidates, name)
 	}
@@ -653,8 +729,13 @@ func tieredExpr(mode, expr, ctxTier, ctxTierPerCall string) (string, bool) {
 		}
 		return "", false
 	}
-	// No mode entry: fall back to a stored expression, like GetBillingMode.
-	if strings.TrimSpace(expr) != "" {
+	// Only a model with no stored mode at all may fall back to a bare
+	// expression, mirroring GetBillingMode. When a concrete non-tiered mode
+	// (per-token / per-request) is stored, a leftover expression is dead
+	// configuration: the relay bills from ModelPrice/ModelRatio, so the
+	// comparison must too — otherwise a stale expr silently overrides the
+	// price the site actually charges.
+	if mode == "" && strings.TrimSpace(expr) != "" {
 		return expr, true
 	}
 	return "", false
@@ -938,6 +1019,9 @@ type boundChannelRow struct {
 	ChannelName string
 	ChannelType int
 	ModelName   string
+	// Groups lists the site groups this channel serves the model in (abilities
+	// rows are per group, so the same channel+model appears once per group).
+	Groups []string
 	// ModelMapping may be nil when the channel has no mapping configured.
 	ModelMapping map[string]string
 }
@@ -955,18 +1039,27 @@ func boundChannelsForModels(modelNames []string) (map[string][]boundChannelRow, 
 		ChannelName     string
 		ChannelType     int
 		ModelName       string
+		GroupName       string  `gorm:"column:group_name"`
 		ModelMappingRaw *string `gorm:"column:model_mapping"`
 	}
 	for _, chunk := range chunkStrings(modelNames, pricingAnalysisQueryChunkSize) {
 		var rows []row
 		if err := dbx.DB.Table("abilities a").
-			Select("a.channel_id as channel_id, c.name as channel_name, c.type as channel_type, a.model as model_name, c.model_mapping as model_mapping").
+			Select("a.channel_id as channel_id, c.name as channel_name, c.type as channel_type, a.model as model_name, a."+dbx.GroupCol()+" as group_name, c.model_mapping as model_mapping").
 			Joins("JOIN channels c ON c.id = a.channel_id").
 			Where("a.model IN ? AND a.enabled = ?", chunk, true).
 			Scan(&rows).Error; err != nil {
 			return nil, err
 		}
+		// One abilities row per (channel, model, group); fold them into one
+		// binding so the analysis does not repeat a channel block per group.
+		index := make(map[[2]any]int)
 		for _, r := range rows {
+			key := [2]any{r.ChannelID, r.ModelName}
+			if at, ok := index[key]; ok {
+				out[r.ModelName][at].Groups = append(out[r.ModelName][at].Groups, r.GroupName)
+				continue
+			}
 			var mapping map[string]string
 			if r.ModelMappingRaw != nil && *r.ModelMappingRaw != "" && *r.ModelMappingRaw != "{}" {
 				mapping = map[string]string{}
@@ -974,11 +1067,13 @@ func boundChannelsForModels(modelNames []string) (map[string][]boundChannelRow, 
 					common.SysError(fmt.Sprintf("failed to unmarshal model_mapping for channel %d: %v", r.ChannelID, err))
 				}
 			}
+			index[key] = len(out[r.ModelName])
 			out[r.ModelName] = append(out[r.ModelName], boundChannelRow{
 				ChannelID:    r.ChannelID,
 				ChannelName:  r.ChannelName,
 				ChannelType:  r.ChannelType,
 				ModelName:    r.ModelName,
+				Groups:       []string{r.GroupName},
 				ModelMapping: mapping,
 			})
 		}

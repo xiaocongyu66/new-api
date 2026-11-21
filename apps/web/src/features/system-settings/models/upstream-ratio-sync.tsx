@@ -491,6 +491,7 @@ export function UpstreamRatioSync() {
 
       <PricingAnalysisDialog
         row={selectedAnalysisRow}
+        groupRatios={analysisData?.group_ratios ?? {}}
         onOpenChange={(open) => {
           if (!open) setSelectedAnalysisRow(null)
         }}

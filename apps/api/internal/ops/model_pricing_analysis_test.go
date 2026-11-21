@@ -102,8 +102,13 @@ func TestResolveUpstreamFields(t *testing.T) {
 		"empty":  {},
 	}
 
-	// Exact match wins over every fallback.
+	// A channel mapping wins over the exact-name catalog entry.
 	got := resolveUpstreamFields("[套餐]x", sourceModels, map[string]string{"[套餐]x": "mapped"})
+	require.NotNil(t, got)
+	assert.Equal(t, "via-mapping", got[field])
+
+	// Without a mapping the exact name wins over every strip fallback.
+	got = resolveUpstreamFields("[套餐]x", sourceModels, nil)
 	require.NotNil(t, got)
 	assert.Equal(t, "exact-bracket", got[field])
 
@@ -135,6 +140,15 @@ func TestResolveUpstreamFields(t *testing.T) {
 	}, map[string]string{"[套餐]x": "mapped"})
 	require.NotNil(t, got)
 	assert.Equal(t, "via-mapping", got[field])
+
+	// Mapping wins even when the local name itself exists upstream: the
+	// catalog row is a different product than the one this channel proxies.
+	got = resolveUpstreamFields("gemini-4-hydrogen", map[string]map[string]any{
+		"gemini-4-hydrogen": {field: "catalog-row"},
+		"哈基米4h":             {field: "mapped-call"},
+	}, map[string]string{"gemini-4-hydrogen": "哈基米4h"})
+	require.NotNil(t, got)
+	assert.Equal(t, "mapped-call", got[field])
 
 	// Empty field maps are treated as misses.
 	assert.Nil(t, resolveUpstreamFields("empty", sourceModels, nil))

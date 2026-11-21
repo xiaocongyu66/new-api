@@ -94,6 +94,16 @@ type AnalysisChannel struct {
 	// consume logs in range. Nil when no logs exist.
 	SubscriptionRevenue *float64 `json:"subscription_revenue"`
 	GroupRatio          *float64 `json:"group_ratio"`
+	// Groups are the site groups this channel serves the model in; the UI
+	// prices each group separately because the charge is base × group ratio.
+	Groups []string `json:"groups"`
+	// UpstreamGroups is the upstream's own enable_groups list, and
+	// UpstreamGroupRatio the multiplier applied to its published price.
+	// UpstreamGroupAmbiguous marks models sold in several upstream groups:
+	// the highest candidate ratio is applied (conservative cost).
+	UpstreamGroups         []string `json:"upstream_groups"`
+	UpstreamGroupRatio     float64  `json:"upstream_group_ratio"`
+	UpstreamGroupAmbiguous bool     `json:"upstream_group_ambiguous"`
 }
 
 // AnalysisRow is one plaza alias row in the analysis result.
@@ -118,6 +128,9 @@ type PricingAnalysisData struct {
 	Windows []int            `json:"windows"`
 	Vendors []AnalysisVendor `json:"vendors"`
 	Rows    []AnalysisRow    `json:"rows"`
+	// GroupRatios is the site's group → ratio map, so the UI can show each
+	// group's effective price (base price × ratio) in the channel breakdown.
+	GroupRatios map[string]float64 `json:"group_ratios"`
 }
 
 // FluctuationChange is one changed price field between two fetch batches.
