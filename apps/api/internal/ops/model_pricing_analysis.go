@@ -338,6 +338,48 @@ func snapshotGroupRatios(snapshotBySource map[string]map[string]map[string]any, 
 	return out
 }
 
+// snapshotCurrency returns the display currency persisted for a source.
+func snapshotCurrency(snapshotBySource map[string]map[string]map[string]any, sourceKey string) map[string]any {
+	fields := snapshotBySource[sourceKey][""]
+	if raw, ok := fields["currency"].(map[string]any); ok {
+		return raw
+	}
+	return nil
+}
+
+// upstreamCurrencyFactor converts the upstream's published price into the
+// currency-neutral USD scale the site stores quota in.
+//
+// new-api keeps quota currency-neutral (quota/QuotaPerUnit is USD) and only
+// applies a currency at display time: CNY multiplies by usd_exchange_rate,
+// CUSTOM by the admin's rate. The pricing payload's ratio × 2 is therefore
+// already USD-scale for USD and CNY sites alike (the CNY rate cancels), while
+// a CUSTOM site's rate does not: divide it out. A TOKENS-mode site publishes
+// no comparable money at all, so its cost is marked unsupported.
+func upstreamCurrencyFactor(currency map[string]any) (factor float64, label string, supported bool) {
+	if currency == nil {
+		return 1, "USD", true
+	}
+	displayType, _ := currency["quota_display_type"].(string)
+	switch strings.ToUpper(strings.TrimSpace(displayType)) {
+	case "", "USD", "CNY":
+		if strings.EqualFold(displayType, "CNY") {
+			return 1, "CNY", true
+		}
+		return 1, "USD", true
+	case "CUSTOM":
+		rate, _ := asFloat64(currency["custom_currency_exchange_rate"])
+		if rate <= 0 {
+			return 1, "CUSTOM", true
+		}
+		return 1 / rate, "CUSTOM", true
+	case "TOKENS":
+		return 0, "TOKENS", false
+	default:
+		return 1, displayType, true
+	}
+}
+
 // upstreamGroupMultiplier derives the multiplier the upstream applies to its
 // published price for the group our key is served from. /api/pricing exposes a
 // per-model enable_groups list plus a site-level group_ratio map, so a model
@@ -395,6 +437,8 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 	upFields := resolveUpstreamFields(modelName, snapshotBySource[sourceKey], ch.ModelMapping)
 	upstreamExpr, _ := modelExpr(upFields)
 	upstreamRatio, upstreamGroups, upstreamAmbiguous := upstreamGroupMultiplier(upFields, snapshotGroupRatios(snapshotBySource, sourceKey))
+	currencyFactor, upstreamCurrency, currencySupported := upstreamCurrencyFactor(snapshotCurrency(snapshotBySource, sourceKey))
+	upstreamRatio *= currencyFactor
 	entry := dto.AnalysisChannel{
 		ChannelID:              ch.ChannelID,
 		ChannelName:            ch.ChannelName,
@@ -409,9 +453,11 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 		UpstreamGroups:         upstreamGroups,
 		UpstreamGroupRatio:     upstreamRatio,
 		UpstreamGroupAmbiguous: upstreamAmbiguous,
+		UpstreamCurrency:       upstreamCurrency,
+		UpstreamCostComparable: currencySupported,
 		Windows:                channelWindows(localFields[modelName], upFields, windows, ch.ChannelID, modelName, tierUsageMap, upstreamRatio),
 	}
-	if upstreamExpr == "" {
+	if upstreamExpr == "" || !currencySupported {
 		return entry, 0, false
 	}
 	var chCost float64

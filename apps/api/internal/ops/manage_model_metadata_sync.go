@@ -608,6 +608,49 @@ func getSyncHTTPClient() *http.Client {
 	return syncHTTPClient
 }
 
+// fetchUpstreamCurrency reads the upstream site's display-currency settings
+// from /api/status. Best effort: an unreachable or non-new-api endpoint simply
+// yields nil and the analysis falls back to USD-scale semantics.
+func fetchUpstreamCurrency(client *http.Client, baseURL string, timeoutSeconds int) map[string]any {
+	if !strings.HasPrefix(baseURL, "http") {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/api/status", nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var body struct {
+		Data struct {
+			QuotaDisplayType           string  `json:"quota_display_type"`
+			USDExchangeRate            float64 `json:"usd_exchange_rate"`
+			CustomCurrencyExchangeRate float64 `json:"custom_currency_exchange_rate"`
+			AmountUnit                 string  `json:"amount_unit"`
+		} `json:"data"`
+	}
+	if err := common.DecodeJson(io.LimitReader(resp.Body, 1<<20), &body); err != nil {
+		return nil
+	}
+	if body.Data.QuotaDisplayType == "" && body.Data.AmountUnit == "" {
+		return nil
+	}
+	return map[string]any{
+		"quota_display_type":            body.Data.QuotaDisplayType,
+		"usd_exchange_rate":             body.Data.USDExchangeRate,
+		"custom_currency_exchange_rate": body.Data.CustomCurrencyExchangeRate,
+		"amount_unit":                   body.Data.AmountUnit,
+	}
+}
+
 // ---- Use Cases ----
 
 // FetchUpstreamRatios fetches ratio data from upstream channels and compares with local.
@@ -971,6 +1014,14 @@ func FetchUpstreamRatios(c contract.Context) {
 			// the price actually charged for our key's group.
 			if len(body.GroupRatio) > 0 {
 				converted["group_ratio"] = map[string]any{"": body.GroupRatio}
+			}
+			// Display currency of the upstream site. new-api keeps quota in a
+			// currency-neutral unit and only converts at display time, so a
+			// CNY site with its own rate shows different amounts than a USD
+			// site for the same ratios. Persisting the type + rate lets the
+			// analysis convert both sides to one scale.
+			if currency := fetchUpstreamCurrency(client, chItem.BaseURL, req.Timeout); currency != nil {
+				converted["currency"] = map[string]any{"": currency}
 			}
 
 			ch <- upstreamResult{Name: uniqueName, Data: converted}

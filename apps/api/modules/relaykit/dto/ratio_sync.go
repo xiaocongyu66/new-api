@@ -104,6 +104,12 @@ type AnalysisChannel struct {
 	UpstreamGroups         []string `json:"upstream_groups"`
 	UpstreamGroupRatio     float64  `json:"upstream_group_ratio"`
 	UpstreamGroupAmbiguous bool     `json:"upstream_group_ambiguous"`
+	// UpstreamCurrency is the upstream site's display currency; costs are
+	// normalized to the USD scale our quota uses before comparison.
+	// UpstreamCostComparable=false means the upstream publishes no money
+	// (TOKENS display mode), so no cost is reported.
+	UpstreamCurrency       string `json:"upstream_currency"`
+	UpstreamCostComparable bool   `json:"upstream_cost_comparable"`
 }
 
 // AnalysisRow is one plaza alias row in the analysis result.

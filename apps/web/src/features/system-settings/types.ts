@@ -672,6 +672,8 @@ export type PricingAnalysisChannel = {
   upstream_groups: string[] | null
   upstream_group_ratio: number
   upstream_group_ambiguous: boolean
+  upstream_currency: string
+  upstream_cost_comparable: boolean
 }
 
 export type PricingAnalysisRow = {

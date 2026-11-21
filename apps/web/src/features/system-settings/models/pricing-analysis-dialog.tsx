@@ -20,6 +20,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
+import { formatCurrencyFromUSD } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -65,10 +66,11 @@ function formatTokens(value: number): string {
   return String(value)
 }
 
+// Analysis amounts are USD-scale (quota / QuotaPerUnit); the site's display
+// currency and exchange rate decide the symbol and the multiplier.
 function formatMoney(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—'
-  const sign = value < 0 ? '-' : ''
-  return `${sign}$${Math.abs(value).toFixed(2)}`
+  return formatCurrencyFromUSD(value, { digitsLarge: 2, digitsSmall: 4 })
 }
 
 function formatPercent(value: number | null | undefined): string {
@@ -240,6 +242,11 @@ function ChannelTable({
               {t('Upstream group')} {channel.upstream_groups?.join(' / ')} ×
               {channel.upstream_group_ratio.toFixed(2)}
               {channel.upstream_group_ambiguous ? ` (${t('highest applied')})` : ''}
+            </span>
+          )}
+          {!channel.upstream_cost_comparable && (
+            <span className='text-amber-600 dark:text-amber-400'>
+              {t('Upstream prices in tokens: cost not comparable')}
             </span>
           )}
         </div>
