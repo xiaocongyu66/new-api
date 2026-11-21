@@ -56,13 +56,13 @@ func (probeHandler) Run(ctx context.Context, task *ops.SystemTask, runnerID stri
 	finishSystemTaskHandler(task, runnerID, ops.SystemTaskStatusSucceeded, result, nil)
 }
 
-// runProbeTask 对每个启用渠道（payload 限定时仅限给定 id）的每个模型复用
-// testChannel 做一次探测，落库 ChannelProbeResult，随后清理 7 天前旧行并评估阈值通知。
+// runProbeTask 零消耗探测每个启用渠道（payload 限定时仅限给定 id）。
+//
+// 探测只请求上游模型列表（GET /v1/models），不发送任何对话消息，因此不会
+// 产生 prompt/completion token，也不写消费日志；可用性与耗时落到
+// ChannelProbeResult 供「上游情况」与模型广场图表聚合，随后清理 7 天前旧行
+// 并评估阈值通知。
 func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, runnerID string) (*probeTaskResult, error) {
-	testUserID, err := resolveChannelTestUserID(nil)
-	if err != nil {
-		return nil, err
-	}
 	allChannels, err := channelpkg.GetAllChannels(0, 0, true, false)
 	if err != nil {
 		return nil, err
@@ -109,6 +109,22 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 		}
 		report(index, total)
 
+		// Zero-cost probe: only GET the upstream model list. No chat request is
+		// sent, so no prompt/completion tokens are consumed and nothing is
+		// billed. One request covers every model declared by the channel, so a
+		// channel with 20 models still costs a single metadata call.
+		tik := time.Now()
+		_, probeErr := fetchChannelUpstreamModelIDs(channel)
+		ms := time.Since(tik).Milliseconds()
+		success := probeErr == nil
+		errorCode := ""
+		if probeErr != nil {
+			errorCode = probeErr.Error()
+			if len(errorCode) > probeErrorCodeMaxLen {
+				errorCode = errorCode[:probeErrorCodeMaxLen]
+			}
+		}
+
 		seen := make(map[string]struct{}, len(channel.GetModels()))
 		for _, rawModel := range channel.GetModels() {
 			if ctx != nil && ctx.Err() != nil {
@@ -123,19 +139,6 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 			}
 			seen[model] = struct{}{}
 
-			tik := time.Now()
-			probeResult := testChannel(ctx, channel, testUserID, model, "", false)
-			ms := time.Since(tik).Milliseconds()
-			success := probeResult.localErr == nil && probeResult.newAPIError == nil
-			errorCode := ""
-			if probeResult.newAPIError != nil {
-				errorCode = string(probeResult.newAPIError.GetErrorCode())
-			} else if probeResult.localErr != nil {
-				errorCode = probeResult.localErr.Error()
-				if len(errorCode) > probeErrorCodeMaxLen {
-					errorCode = errorCode[:probeErrorCodeMaxLen]
-				}
-			}
 			if err := dbx.DB.Create(&ops.ChannelProbeResult{
 				ChannelId: channel.Id,
 				Model:     model,
@@ -152,15 +155,15 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 			} else {
 				result.Failed++
 			}
-			if common.RequestInterval > 0 {
-				if ctx == nil {
-					time.Sleep(common.RequestInterval)
-				} else {
-					select {
-					case <-ctx.Done():
-						goto done
-					case <-time.After(common.RequestInterval):
-					}
+		}
+		if common.RequestInterval > 0 {
+			if ctx == nil {
+				time.Sleep(common.RequestInterval)
+			} else {
+				select {
+				case <-ctx.Done():
+					goto done
+				case <-time.After(common.RequestInterval):
 				}
 			}
 		}
