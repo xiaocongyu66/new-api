@@ -51,7 +51,6 @@ describe('route skeleton map', () => {
   it('maps console list pages to the table archetype', () => {
     expect(resolveRouteSkeletonKey('/keys')).toBe('table')
     expect(resolveRouteSkeletonKey('/usage-logs/common')).toBe('table')
-    expect(resolveRouteSkeletonKey('/usage-logs/task')).toBe('table')
     expect(resolveRouteSkeletonKey('/users')).toBe('table')
     expect(resolveRouteSkeletonKey('/admin/users')).toBe('table')
     expect(resolveRouteSkeletonKey('/channels')).toBe('table')

@@ -238,7 +238,7 @@ export function Pricing() {
           </div>
           {chargeNoticeItems.length > 0 && (
             <div className='absolute end-0 bottom-0 z-10 hidden w-64 xl:block'>
-              <div className='bg-card-surface text-foreground backdrop-blur-card rounded-xl border border-lime-500/50 px-2.5 py-1.5 text-[10px] leading-snug dark:border-lime-400/50'>
+              <div className='bg-card-surface text-foreground backdrop-blur-card rounded-[6px] border border-lime-500/50 px-2.5 py-1.5 text-[10px] leading-snug dark:border-lime-400/50'>
                 <div className='mb-1 flex items-center gap-1.5 font-medium text-lime-600 dark:text-lime-400'>
                   <Info className='size-3' aria-hidden='true' />
                   {t('home.policy.empty.title')}
@@ -259,7 +259,7 @@ export function Pricing() {
           )}
         </header>
         {chargeNoticeItems.length > 0 && (
-          <div className='bg-card-surface text-foreground backdrop-blur-card w-full rounded-xl border border-lime-500/50 px-2.5 py-1.5 text-[10px] leading-snug xl:hidden dark:border-lime-400/50'>
+          <div className='bg-card-surface text-foreground backdrop-blur-card w-full rounded-[6px] border border-lime-500/50 px-2.5 py-1.5 text-[10px] leading-snug xl:hidden dark:border-lime-400/50'>
             <div className='mb-1 flex items-center gap-1.5 font-medium text-lime-600 dark:text-lime-400'>
               <Info className='size-3.5' aria-hidden='true' />
               {t('home.policy.empty.title')}

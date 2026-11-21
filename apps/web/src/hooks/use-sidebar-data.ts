@@ -23,7 +23,6 @@ import {
   Gift,
   Key,
   LayoutDashboard,
-  ListTodo,
   MessageSquare,
   Settings,
   Shield,
@@ -169,13 +168,6 @@ export function useSidebarData(): SidebarData {
                 title: t('Usage Logs'),
                 url: '/usage-logs/common',
                 icon: FileText,
-              },
-              {
-                title: t('Task Logs'),
-                url: '/usage-logs/task',
-                activeUrls: ['/usage-logs/drawing'],
-                configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-                icon: ListTodo,
               },
               ...(pricingEnabled
                 ? [
