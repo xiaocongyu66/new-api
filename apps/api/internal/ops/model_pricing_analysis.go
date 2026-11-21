@@ -95,12 +95,14 @@ func PricingAnalysis(c contract.Context) {
 			localFields[modelName][field] = value
 		}
 	}
-	// Upstream prices are keyed by source (channel) then model. A channel with
-	// no snapshot of its own stays unpriced: silently substituting a reference
-	// source (models.dev) attributed another vendor's prices to real channels.
-	sources := upstreamSources(req.Upstreams)
+	// Upstream prices are keyed by source (channel) then model. Every source's
+	// own latest snapshot is loaded, regardless of which channels are selected
+	// for refresh: the selection decides what to re-fetch, not which known
+	// prices may be shown. A channel with no snapshot of its own stays
+	// unpriced — substituting a reference source (models.dev) would attribute
+	// another vendor's prices to a real channel.
 	snapshotBySource := map[string]map[string]map[string]any{}
-	if batch, bySource := latestSnapshotValues(sources); batch > 0 {
+	if batch, bySource := latestSnapshotValues(); batch > 0 {
 		snapshotBySource = bySource
 	}
 
@@ -706,34 +708,17 @@ func absInt(x int) int {
 	return x
 }
 
-// upstreamSources reconstructs the unique source names used when persisting
-// snapshots (name, or name(id) when an id is present).
-func upstreamSources(upstreams []dto.UpstreamDTO) []string {
-	sources := make([]string, 0, len(upstreams))
-	for _, u := range upstreams {
-		if u.ID != 0 {
-			sources = append(sources, fmt.Sprintf("%s(%d)", u.Name, u.ID))
-		} else if u.Name != "" {
-			sources = append(sources, u.Name)
-		}
-	}
-	return sources
-}
-
 // latestSnapshotValues returns each source's most recent fetched_at batch with
 // prices nested by source then model then field. Channels fetched in different
 // batches must all stay visible, so the latest batch is chosen per source; the
 // returned batch is the maximum across sources (only used as a >0 signal).
-func latestSnapshotValues(sources []string) (int64, map[string]map[string]map[string]any) {
+func latestSnapshotValues() (int64, map[string]map[string]map[string]any) {
 	type sourceBatch struct {
 		Source string
 		Batch  int64
 	}
 	q := dbx.DB.Model(&UpstreamPriceSnapshot{}).
 		Select("source, MAX(fetched_at) AS batch")
-	if len(sources) > 0 {
-		q = q.Where("source IN ?", sources)
-	}
 	var batches []sourceBatch
 	if err := q.Group("source").Scan(&batches).Error; err != nil {
 		return 0, nil

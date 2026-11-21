@@ -6411,6 +6411,8 @@
     "Upstream@128K": "上游@128K",
     "Fluctuation alerts": "波動提醒",
     "Loading analysis": "載入分析",
+    "No sync channel selected: costs come from each channel's last fetched snapshot. Click \"Select Sync Channels\" and confirm to fetch current prices.": "未選擇同步渠道：成本取自各渠道最近一次拉取的報價。點擊「選擇同步渠道」並確認即可取得最新價格。",
+    "{{count}} channel bindings have no upstream price yet. Select those channels and confirm to fetch their prices.": "{{count}} 個渠道綁定尚無上游報價。勾選這些渠道並確認即可拉取報價。",
     "No upstream price": "無上游報價",
     "Group ratio": "分組倍率",
     "No analysis data": "暫無分析數據",
