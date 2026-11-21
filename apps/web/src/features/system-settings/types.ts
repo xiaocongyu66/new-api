@@ -644,6 +644,10 @@ export type PricingAnalysisChannelWindow = {
   requests: number | null
   cost: number | null
   profit: number | null
+  revenue: number | null
+  subscription_revenue: number | null
+  group_ratio: number | null
+  usage_margin_pct: number | null
 }
 
 export type PricingAnalysisChannel = {
@@ -660,6 +664,14 @@ export type PricingAnalysisChannel = {
   profit: number | null
   margin_pct: number | null
   windows: PricingAnalysisChannelWindow[]
+  subscription_revenue: number | null
+  group_ratio: number | null
+  groups: string[]
+  upstream_groups: string[] | null
+  upstream_group_ratio: number
+  upstream_group_ambiguous: boolean
+  upstream_currency: string
+  upstream_cost_comparable: boolean
 }
 
 export type PricingAnalysisRow = {
@@ -687,6 +699,7 @@ export type PricingAnalysisData = {
   windows: number[]
   vendors: PricingAnalysisVendor[]
   rows: PricingAnalysisRow[]
+  group_ratios: Record<string, number>
 }
 
 export type PricingAnalysisResponse = {
