@@ -41,6 +41,8 @@ import type {
   UpstreamConfig,
 } from '../types'
 import { PricingAnalysisDialog } from './pricing-analysis-dialog'
+import { useIsMobile } from '@/hooks/use-mobile'
+
 import { PricingAnalysisTable } from './pricing-analysis-table'
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { ChannelSelectorDialog } from './channel-selector-dialog'
@@ -427,6 +429,11 @@ export function UpstreamRatioSync() {
   }, [analysisVendor, analysisDays, analysisThreshold, handleRefreshAnalysis])
 
   const isLoading = fetchMutation.isPending || analysisLoading
+  const isMobile = useIsMobile()
+  // Floating actions exist for narrow screens where the table toolbar scrolls
+  // out of reach. On desktop they overlap content without adding anything, and
+  // they must never float above an open dialog.
+  const showFloatingActions = isMobile && !channelDialogOpen && !selectedAnalysisRow
   const unpricedChannels = (analysisData?.rows ?? []).reduce(
     (n, row) =>
       n +
@@ -496,6 +503,7 @@ export function UpstreamRatioSync() {
           if (!open) setSelectedAnalysisRow(null)
         }}
       />
+      {showFloatingActions && (
       <div className='fixed right-4 bottom-6 z-30 flex flex-col gap-2'>
         <Button
           size='icon'
@@ -516,6 +524,7 @@ export function UpstreamRatioSync() {
           <RefreshCcw className={cn('h-4 w-4', analysisLoading && 'animate-spin')} />
         </Button>
       </div>
+      )}
     </div>
   )
 }
