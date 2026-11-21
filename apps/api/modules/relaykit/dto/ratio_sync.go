@@ -67,6 +67,12 @@ type AnalysisChannelWindow struct {
 	Requests *int64   `json:"requests"`
 	Cost     *float64 `json:"cost"`
 	Profit   *float64 `json:"profit"`
+	// Revenue is the quota actually charged (group ratio included); the
+	// subscription share and the token-weighted mean group ratio explain how
+	// that charge was composed. Nil when no log carries that tier.
+	Revenue             *float64 `json:"revenue"`
+	SubscriptionRevenue *float64 `json:"subscription_revenue"`
+	GroupRatio          *float64 `json:"group_ratio"`
 }
 
 // AnalysisChannel is one bound (channel, model) entry within an alias row.
@@ -84,6 +90,26 @@ type AnalysisChannel struct {
 	Profit      *float64                `json:"profit"`
 	MarginPct   *float64                `json:"margin_pct"`
 	Windows     []AnalysisChannelWindow `json:"windows"`
+	// Channel-wide subscription share and token-weighted group ratio from the
+	// consume logs in range. Nil when no logs exist.
+	SubscriptionRevenue *float64 `json:"subscription_revenue"`
+	GroupRatio          *float64 `json:"group_ratio"`
+	// Groups are the site groups this channel serves the model in; the UI
+	// prices each group separately because the charge is base × group ratio.
+	Groups []string `json:"groups"`
+	// UpstreamGroups is the upstream's own enable_groups list, and
+	// UpstreamGroupRatio the multiplier applied to its published price.
+	// UpstreamGroupAmbiguous marks models sold in several upstream groups:
+	// the highest candidate ratio is applied (conservative cost).
+	UpstreamGroups         []string `json:"upstream_groups"`
+	UpstreamGroupRatio     float64  `json:"upstream_group_ratio"`
+	UpstreamGroupAmbiguous bool     `json:"upstream_group_ambiguous"`
+	// UpstreamCurrency is the upstream site's display currency; costs are
+	// normalized to the USD scale our quota uses before comparison.
+	// UpstreamCostComparable=false means the upstream publishes no money
+	// (TOKENS display mode), so no cost is reported.
+	UpstreamCurrency       string `json:"upstream_currency"`
+	UpstreamCostComparable bool   `json:"upstream_cost_comparable"`
 }
 
 // AnalysisRow is one plaza alias row in the analysis result.
@@ -108,6 +134,9 @@ type PricingAnalysisData struct {
 	Windows []int            `json:"windows"`
 	Vendors []AnalysisVendor `json:"vendors"`
 	Rows    []AnalysisRow    `json:"rows"`
+	// GroupRatios is the site's group → ratio map, so the UI can show each
+	// group's effective price (base price × ratio) in the channel breakdown.
+	GroupRatios map[string]float64 `json:"group_ratios"`
 }
 
 // FluctuationChange is one changed price field between two fetch batches.

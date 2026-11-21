@@ -68,6 +68,9 @@ function getDefaultEndpointForChannel(channel: UpstreamChannel): string {
   return DEFAULT_ENDPOINT
 }
 const ANALYSIS_CACHE_KEY = 'pricing-analysis-cache-v1'
+// The channel selection decides which upstreams the analysis prices against; losing it
+// on reload silently reverted the comparison to the models.dev reference preset.
+const SELECTION_STORAGE_KEY = 'pricing-analysis-selected-channels-v1'
 const ANALYSIS_REFRESH_MS = 5 * 60 * 1000
 
 type AnalysisSignature = {
@@ -116,7 +119,15 @@ export function UpstreamRatioSync() {
   const { t } = useTranslation()
 
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
-  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([])
+  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(SELECTION_STORAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'number') : []
+    } catch {
+      return []
+    }
+  })
   const [channelEndpoints, setChannelEndpoints] = useState<
     Record<number, string>
   >({})
@@ -134,6 +145,11 @@ export function UpstreamRatioSync() {
   const [analysisThreshold, setAnalysisThreshold] = useState<number>(10)
   const [selectedAnalysisRow, setSelectedAnalysisRow] = useState<PricingAnalysisRow | null>(null)
   const analysisLoadedRef = useRef(false)
+  // Timestamp of the last successful channel fetch. handleRefreshAnalysis prefetches
+  // /fetch before /analysis to pick up fresh prices, but the confirm-selection flow
+  // already fetched: a second overlapping fetch writes the same fetched_at second and
+  // the snapshot replace-by-second wipes the first batch's rows.
+  const lastFetchAtRef = useRef(0)
   const lastFiltersRef = useRef({
     vendor: analysisVendor,
     days: analysisDays,
@@ -205,6 +221,7 @@ export function UpstreamRatioSync() {
       }
 
       toast.success(t('Upstream prices fetched successfully'))
+      lastFetchAtRef.current = Date.now()
 
       // Channel selection changed: refresh the analysis so costs/profits
       // reflect the newly selected upstreams.
@@ -219,6 +236,14 @@ export function UpstreamRatioSync() {
   const handleOpenChannelDialog = () => {
     setChannelDialogOpen(true)
   }
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(selectedChannelIds))
+    } catch {
+      // Storage may be unavailable; the selection still works for this page view.
+    }
+  }, [selectedChannelIds])
 
   const handleConfirmChannelSelection = (selectedIds: number[]) => {
     const selectedChannels = channels.filter((ch) =>
@@ -275,7 +300,10 @@ export function UpstreamRatioSync() {
       const request = buildAnalysisRequest()
       // /analysis reads the latest /fetch snapshot; refresh it first so the
       // comparison reflects current upstream prices after channel selection.
-      if (request.upstreams.length > 0) {
+      // Skip when the caller just fetched (confirm-selection flow) to avoid two
+      // overlapping /fetch calls racing on the same snapshot batch second.
+      const justFetched = Date.now() - lastFetchAtRef.current < 5000
+      if (request.upstreams.length > 0 && !justFetched) {
         try {
           await fetchUpstreamRatios({ upstreams: request.upstreams, timeout: request.timeout })
         } catch {
@@ -399,9 +427,29 @@ export function UpstreamRatioSync() {
   }, [analysisVendor, analysisDays, analysisThreshold, handleRefreshAnalysis])
 
   const isLoading = fetchMutation.isPending || analysisLoading
+  const unpricedChannels = (analysisData?.rows ?? []).reduce(
+    (n, row) =>
+      n +
+      (row.channels ?? []).filter(
+        (ch) => ch.price_mode === '' && ch.billing_mode === ''
+      ).length,
+    0
+  )
 
   return (
     <div className='flex h-full min-h-0 flex-col gap-4'>
+      {(selectedChannelIds.length === 0 || unpricedChannels > 0) && (
+        <div className='rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400'>
+          {selectedChannelIds.length === 0
+            ? t(
+                'No sync channel selected: costs come from each channel\'s last fetched snapshot. Click "Select Sync Channels" and confirm to fetch current prices.'
+              )
+            : t(
+                '{{count}} channel bindings have no upstream price yet. Select those channels and confirm to fetch their prices.',
+                { count: unpricedChannels }
+              )}
+        </div>
+      )}
       <SettingsPageActionsPortal>
         <Button
           size='sm'
@@ -443,6 +491,7 @@ export function UpstreamRatioSync() {
 
       <PricingAnalysisDialog
         row={selectedAnalysisRow}
+        groupRatios={analysisData?.group_ratios ?? {}}
         onOpenChange={(open) => {
           if (!open) setSelectedAnalysisRow(null)
         }}

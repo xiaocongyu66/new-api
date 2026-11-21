@@ -608,6 +608,49 @@ func getSyncHTTPClient() *http.Client {
 	return syncHTTPClient
 }
 
+// fetchUpstreamCurrency reads the upstream site's display-currency settings
+// from /api/status. Best effort: an unreachable or non-new-api endpoint simply
+// yields nil and the analysis falls back to USD-scale semantics.
+func fetchUpstreamCurrency(client *http.Client, baseURL string, timeoutSeconds int) map[string]any {
+	if !strings.HasPrefix(baseURL, "http") {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/api/status", nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var body struct {
+		Data struct {
+			QuotaDisplayType           string  `json:"quota_display_type"`
+			USDExchangeRate            float64 `json:"usd_exchange_rate"`
+			CustomCurrencyExchangeRate float64 `json:"custom_currency_exchange_rate"`
+			AmountUnit                 string  `json:"amount_unit"`
+		} `json:"data"`
+	}
+	if err := common.DecodeJson(io.LimitReader(resp.Body, 1<<20), &body); err != nil {
+		return nil
+	}
+	if body.Data.QuotaDisplayType == "" && body.Data.AmountUnit == "" {
+		return nil
+	}
+	return map[string]any{
+		"quota_display_type":            body.Data.QuotaDisplayType,
+		"usd_exchange_rate":             body.Data.USDExchangeRate,
+		"custom_currency_exchange_rate": body.Data.CustomCurrencyExchangeRate,
+		"amount_unit":                   body.Data.AmountUnit,
+	}
+}
+
 // ---- Use Cases ----
 
 // FetchUpstreamRatios fetches ratio data from upstream channels and compares with local.
@@ -785,9 +828,10 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 
 			var body struct {
-				Success bool            `json:"success"`
-				Data    json.RawMessage `json:"data"`
-				Message string          `json:"message"`
+				Success    bool               `json:"success"`
+				Data       json.RawMessage    `json:"data"`
+				Message    string             `json:"message"`
+				GroupRatio map[string]float64 `json:"group_ratio"`
 			}
 
 			if err := common.DecodeJson(bytes.NewReader(bodyBytes), &body); err != nil {
@@ -817,20 +861,22 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 
 			var pricingItems []struct {
-				ModelName                 string   `json:"model_name"`
-				QuotaType                 int      `json:"quota_type"`
-				ModelRatio                float64  `json:"model_ratio"`
-				ModelPrice                float64  `json:"model_price"`
-				CompletionRatio           float64  `json:"completion_ratio"`
-				CacheRatio                *float64 `json:"cache_ratio"`
-				CreateCacheRatio          *float64 `json:"create_cache_ratio"`
-				ImageRatio                *float64 `json:"image_ratio"`
-				AudioRatio                *float64 `json:"audio_ratio"`
-				AudioCompletionRatio      *float64 `json:"audio_completion_ratio"`
-				BillingMode               string   `json:"billing_mode"`
-				BillingExpr               string   `json:"billing_expr"`
-				BillingContextTier        string   `json:"billing_context_tier"`
-				BillingContextTierPerCall string   `json:"billing_context_tier_per_call"`
+				ModelName                 string             `json:"model_name"`
+				QuotaType                 int                `json:"quota_type"`
+				ModelRatio                float64            `json:"model_ratio"`
+				ModelPrice                float64            `json:"model_price"`
+				CompletionRatio           float64            `json:"completion_ratio"`
+				CacheRatio                *float64           `json:"cache_ratio"`
+				CreateCacheRatio          *float64           `json:"create_cache_ratio"`
+				ImageRatio                *float64           `json:"image_ratio"`
+				AudioRatio                *float64           `json:"audio_ratio"`
+				AudioCompletionRatio      *float64           `json:"audio_completion_ratio"`
+				BillingMode               string             `json:"billing_mode"`
+				BillingExpr               string             `json:"billing_expr"`
+				BillingContextTier        string             `json:"billing_context_tier"`
+				BillingContextTierPerCall string             `json:"billing_context_tier_per_call"`
+				EnableGroups              []string           `json:"enable_groups"`
+				GroupRatio                map[string]float64 `json:"group_ratio"`
 			}
 			if err := common.Unmarshal(body.Data, &pricingItems); err != nil {
 				logger.LogWarn(c.Context(), "unrecognized data format from "+chItem.Name+": "+err.Error())
@@ -846,6 +892,8 @@ func FetchUpstreamRatios(c contract.Context) {
 			audioRatioMap := make(map[string]float64)
 			audioCompletionRatioMap := make(map[string]float64)
 			modelPriceMap := make(map[string]float64)
+			enableGroupsMap := make(map[string]any)
+			modelGroupRatioMap := make(map[string]any)
 			billingModeMap := make(map[string]string)
 			billingExprMap := make(map[string]string)
 			billingContextTierMap := make(map[string]string)
@@ -873,6 +921,12 @@ func FetchUpstreamRatios(c contract.Context) {
 					if hasCallTier {
 						billingContextTierPerCallMap[item.ModelName] = item.BillingContextTierPerCall
 					}
+				}
+				if len(item.EnableGroups) > 0 {
+					enableGroupsMap[item.ModelName] = item.EnableGroups
+				}
+				if len(item.GroupRatio) > 0 {
+					modelGroupRatioMap[item.ModelName] = item.GroupRatio
 				}
 				if item.QuotaType == 1 {
 					modelPriceMap[item.ModelName] = item.ModelPrice
@@ -948,6 +1002,26 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 			if len(billingContextTierPerCallMap) > 0 {
 				converted["billing_context_tier_per_call"] = valueMap(billingContextTierPerCallMap)
+			}
+			if len(enableGroupsMap) > 0 {
+				converted["enable_groups"] = enableGroupsMap
+			}
+			if len(modelGroupRatioMap) > 0 {
+				converted["model_group_ratio"] = modelGroupRatioMap
+			}
+			// Site-level group ratios live under the empty model name: the
+			// analysis needs them to turn the upstream's published price into
+			// the price actually charged for our key's group.
+			if len(body.GroupRatio) > 0 {
+				converted["group_ratio"] = map[string]any{"": body.GroupRatio}
+			}
+			// Display currency of the upstream site. new-api keeps quota in a
+			// currency-neutral unit and only converts at display time, so a
+			// CNY site with its own rate shows different amounts than a USD
+			// site for the same ratios. Persisting the type + rate lets the
+			// analysis convert both sides to one scale.
+			if currency := fetchUpstreamCurrency(client, chItem.BaseURL, req.Timeout); currency != nil {
+				converted["currency"] = map[string]any{"": currency}
 			}
 
 			ch <- upstreamResult{Name: uniqueName, Data: converted}
