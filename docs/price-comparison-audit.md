@@ -299,3 +299,14 @@ vertex/gemini-4-argon         | 2
 
 3. **渠道映射优先级** —— 上游目录里同名模型（如 `gemini-4-hydrogen` 的按量行）会盖住渠道映射指向的按次模型（`哈基米4h`）。改为 `model_mapping` 优先，同名目录行只作无映射时的回退。
 4. **本地残留表达式覆盖按次价** —— `billing_mode=per-request` 且 `ModelPrice` 已配置时，残留的旧 `billing_expr` 仍被当作有效价格，导致「本站」显示按量分档价而 relay 实际按次收费。改为只有完全没有 mode 时才回退到表达式。
+
+
+### 关于货币单位（订正）
+
+前一轮把「站点显示货币」误当成了计价单位，结论有误。核实如下：
+
+- `QuotaPerUnit = 500000`，即 **1 美元 = 500,000 quota**；quota 本身是美元计价。
+- `QuotaToDisplayAmount`：CNY 分支 `q / QuotaPerUnit * USDExchangeRate`，CUSTOM 分支再乘自定义倍率，TOKENS 分支直接返回 quota。可见汇率只影响**显示**，不改变计价。
+- 因此 `ratio × 2` 恒为 USD/1M（`1e6 / QuotaPerUnit = 2`），与站点显示货币无关；`billing_expr` 系数与 `model_price` 本身就是美元。
+
+结论：收入（quota/QuotaPerUnit）与上游成本同为美元，**毛利率与显示汇率无关**——汇率只把两边同时缩放。上一轮「成本被低估 7.3 倍」的说法作废。已把 `upstreamCurrencyFactor` 的 CUSTOM 除法移除（会把 USD 价误除），仅保留 TOKENS 站点的「成本不可比」标记。

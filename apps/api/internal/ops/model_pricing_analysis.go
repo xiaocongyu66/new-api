@@ -347,34 +347,30 @@ func snapshotCurrency(snapshotBySource map[string]map[string]map[string]any, sou
 	return nil
 }
 
-// upstreamCurrencyFactor converts the upstream's published price into the
-// currency-neutral USD scale the site stores quota in.
+// upstreamCurrencyFactor reports whether the upstream's published price is
+// comparable, and under which display currency label.
 //
-// new-api keeps quota currency-neutral (quota/QuotaPerUnit is USD) and only
-// applies a currency at display time: CNY multiplies by usd_exchange_rate,
-// CUSTOM by the admin's rate. The pricing payload's ratio × 2 is therefore
-// already USD-scale for USD and CNY sites alike (the CNY rate cancels), while
-// a CUSTOM site's rate does not: divide it out. A TOKENS-mode site publishes
-// no comparable money at all, so its cost is marked unsupported.
+// new-api quota is USD-denominated by construction: QuotaPerUnit = 500_000
+// quota per dollar, and every price field (model_ratio, model_price,
+// billing_expr coefficients) is expressed against that quota. A site's
+// display currency only reformats the rendered number — CNY multiplies by
+// usd_exchange_rate, CUSTOM by the admin's rate — and applies to BOTH sides
+// of the comparison, so it cancels out of the margin. The factor is therefore
+// always 1; the label is informational.
+//
+// A TOKENS-mode site bills in raw tokens rather than money, so its "price" is
+// not a cost we can subtract: cost is reported as not comparable.
 func upstreamCurrencyFactor(currency map[string]any) (factor float64, label string, supported bool) {
 	if currency == nil {
 		return 1, "USD", true
 	}
 	displayType, _ := currency["quota_display_type"].(string)
-	switch strings.ToUpper(strings.TrimSpace(displayType)) {
-	case "", "USD", "CNY":
-		if strings.EqualFold(displayType, "CNY") {
-			return 1, "CNY", true
-		}
-		return 1, "USD", true
-	case "CUSTOM":
-		rate, _ := asFloat64(currency["custom_currency_exchange_rate"])
-		if rate <= 0 {
-			return 1, "CUSTOM", true
-		}
-		return 1 / rate, "CUSTOM", true
+	displayType = strings.ToUpper(strings.TrimSpace(displayType))
+	switch displayType {
 	case "TOKENS":
-		return 0, "TOKENS", false
+		return 1, displayType, false
+	case "":
+		return 1, "USD", true
 	default:
 		return 1, displayType, true
 	}
