@@ -20,7 +20,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
-  ArrowUp,
   Boxes,
   ClipboardPaste,
   HelpCircle,
@@ -30,7 +29,6 @@ import {
   Sparkles,
   Trash2,
   Copy,
-  ChevronDown,
   FileText,
   Eraser,
   Plus,
@@ -88,7 +86,6 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -135,7 +132,6 @@ import {
   getChannelKey,
   getGroups,
   getPrefillGroups,
-  getSystemPromptPresets,
   refreshCodexCredential,
 } from '../../api'
 import {
@@ -146,10 +142,6 @@ import {
   FIELD_DESCRIPTIONS,
   FIELD_PLACEHOLDERS,
   MODEL_FETCHABLE_TYPES,
-  SYSTEM_PROMPT_PRESET_AUTO,
-  SYSTEM_PROMPT_PRESET_FAMILY_LABELS,
-  SYSTEM_PROMPT_PRESET_FAMILY_ORDER,
-  SYSTEM_PROMPT_PRESET_LABELS,
 } from '../../constants'
 import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
 import {
@@ -176,6 +168,10 @@ import {
   collectNewDisallowedStatusCodeRedirects,
 } from '../../lib/status-code-risk-guard'
 import type { Channel } from '../../types'
+import {
+  FloatingBackToTop,
+  FloatingSectionNav,
+} from '@/components/floating-section-nav'
 import { useChannels } from '../channels-provider'
 import { AdvancedCustomEditorDialog } from '../dialogs/advanced-custom-editor-dialog'
 import { FetchModelsDialog } from '../dialogs/fetch-models-dialog'
@@ -573,79 +569,6 @@ function ChannelEditorNav(props: {
   )
 }
 
-function ChannelMobileSectionNav(props: {
-  items: ChannelEditorNavItem[]
-  activeItemId?: string
-  onNavigate: (targetId: string) => void
-  navigationLabel: string
-}) {
-  const [open, setOpen] = useState(false)
-  const activeItem = props.items.find((item) => item.id === props.activeItemId)
-
-  return createPortal(
-    <div className='fixed right-14 bottom-4 z-[60] lg:hidden'>
-      <div className='relative'>
-        <button
-          type='button'
-          className='bg-background/95 border-border/60 flex items-center gap-1 rounded-full border px-2 py-1 text-left shadow-sm backdrop-blur'
-          aria-expanded={open}
-          aria-label={props.navigationLabel}
-          onClick={() => setOpen((value) => !value)}
-        >
-          <span className='max-w-[7rem] truncate text-[11px] font-medium'>
-            {activeItem?.title ?? props.navigationLabel}
-          </span>
-          <ChevronDown
-            className={cn(
-              'text-muted-foreground size-3 shrink-0 transition-transform',
-              open && 'rotate-180'
-            )}
-            aria-hidden='true'
-          />
-        </button>
-        {open && (
-          <>
-            <button
-              type='button'
-              className='fixed inset-0 z-0 cursor-default'
-              aria-label={props.navigationLabel}
-              onClick={() => setOpen(false)}
-            />
-            <nav
-              className='border-border/60 bg-background absolute bottom-full right-0 z-10 mb-1 max-h-72 w-56 overflow-y-auto rounded-lg border p-1 shadow-lg'
-              aria-label={props.navigationLabel}
-            >
-              {props.items.map((item) => {
-                const isActive = props.activeItemId === item.id
-                return (
-                  <button
-                    key={item.id}
-                    type='button'
-                    className={cn(
-                      'hover:bg-muted/60 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs',
-                      isActive && 'bg-primary/10 font-medium text-primary'
-                    )}
-                    aria-current={isActive ? 'true' : undefined}
-                    onClick={() => {
-                      props.onNavigate(item.id)
-                      setOpen(false)
-                    }}
-                  >
-                    <span className='min-w-0 flex-1 truncate'>
-                      {item.title}
-                    </span>
-                  </button>
-                )
-              })}
-            </nav>
-          </>
-        )}
-      </div>
-    </div>,
-    document.body
-  )
-}
-
 export function ChannelMutateDrawer(props: ChannelMutateDrawerProps) {
   return <ChannelMutateDrawerContent {...props} />
 }
@@ -746,13 +669,6 @@ function ChannelMutateDrawerContent({
     staleTime: 10 * 60 * 1000,
   })
 
-  // Fetch the built-in jailbreak preset catalogue for the preset dropdown.
-  const { data: systemPromptPresetsData, isLoading: presetsLoading } = useQuery({
-    queryKey: ['system_prompt_presets'],
-    queryFn: getSystemPromptPresets,
-    enabled: isPresented,
-    staleTime: 10 * 60 * 1000,
-  })
 
   const { copyToClipboard } = useCopyToClipboard()
 
@@ -808,7 +724,6 @@ function ChannelMutateDrawerContent({
   const currentRemark = useWatch({ control: form.control, name: 'remark' })
   const currentStatusCodeMapping = useWatch({ control: form.control, name: 'status_code_mapping' })
   const currentParamOverride = useWatch({ control: form.control, name: 'param_override' })
-  const currentHeaderOverride = useWatch({ control: form.control, name: 'header_override' })
   const currentForceFormat = useWatch({ control: form.control, name: 'force_format' })
   const currentThinkingToContent = useWatch({ control: form.control, name: 'thinking_to_content' })
   const currentPassThroughBodyEnabled = useWatch({ control: form.control, name: 'pass_through_body_enabled' })
@@ -817,84 +732,6 @@ function ChannelMutateDrawerContent({
   const currentProxy = useWatch({ control: form.control, name: 'proxy' })
   const currentHttpProtocol = useWatch({ control: form.control, name: 'http_protocol' })
   const currentHttp2ConnectionShards = useWatch({ control: form.control, name: 'http2_connection_shards' })
-  const currentSystemPrompt = useWatch({ control: form.control, name: 'system_prompt' })
-  const currentSystemPromptPreset = useWatch({
-    control: form.control,
-    name: 'system_prompt_preset',
-  })
-  // The switch drives the same field as the dropdown, so it reads the
-  // current value rather than mirroring it in separate state.
-  const jailbreakEnabled = Boolean(currentSystemPromptPreset)
-  const lastJailbreakPresetRef = useRef<string>(
-    currentSystemPromptPreset || ''
-  )
-  const systemPromptPresetGroups = useMemo(() => {
-    const presets = systemPromptPresetsData?.data ?? []
-    const grouped = new Map<string, { value: string; label: string }[]>()
-    let autoItem: { value: string; label: string } | null = null
-    presets.forEach((preset) => {
-      let label = t(SYSTEM_PROMPT_PRESET_LABELS[preset.name] ?? preset.name)
-      if (preset.name === SYSTEM_PROMPT_PRESET_AUTO) {
-        autoItem = { value: preset.name, label }
-        return
-      }
-      // The byte size hints at the token cost; auto resolves at runtime and
-      // has no fixed body, so only fixed presets carry a size suffix.
-      if (preset.bytes > 0) {
-        label = `${label} · ${Math.round(preset.bytes / 1024)} KB`
-      }
-      const family = preset.model_family || 'generic'
-      const bucket = grouped.get(family) ?? []
-      bucket.push({ value: preset.name, label })
-      grouped.set(family, bucket)
-    })
-    const ordered: {
-      family: string
-      label: string
-      items: { value: string; label: string }[]
-    }[] = SYSTEM_PROMPT_PRESET_FAMILY_ORDER.filter((family) =>
-      grouped.has(family)
-    ).map((family) => ({
-      family,
-      label: t(
-        SYSTEM_PROMPT_PRESET_FAMILY_LABELS[family] ??
-          SYSTEM_PROMPT_PRESET_LABELS[family] ??
-          family
-      ),
-      items: grouped.get(family) ?? [],
-    }))
-    const knownFamilies: readonly string[] = SYSTEM_PROMPT_PRESET_FAMILY_ORDER
-    const remaining = [...grouped.keys()].filter(
-      (family) => !knownFamilies.includes(family)
-    )
-    remaining.forEach((family) => {
-      ordered.push({
-        family,
-        label: family,
-        items: grouped.get(family) ?? [],
-      })
-    })
-    if (!autoItem) return ordered
-    // Automatic selection is a resolver rather than a template, so it heads
-    // the dropdown in its own section instead of sharing the universal one.
-    return [
-      {
-        family: SYSTEM_PROMPT_PRESET_AUTO,
-        label: t(SYSTEM_PROMPT_PRESET_FAMILY_LABELS.auto),
-        items: [autoItem],
-      },
-      ...ordered,
-    ]
-  }, [systemPromptPresetsData, t])
-  const systemPromptPresetItems = useMemo(
-    () => systemPromptPresetGroups.flatMap((group) => group.items),
-    [systemPromptPresetGroups]
-  )
-  const currentUserSystemPromptOverride = useWatch({ control: form.control, name: 'user_system_prompt_override' })
-  const currentSystemPromptModels = useWatch({
-    control: form.control,
-    name: 'system_prompt_models',
-  })
   const currentAllowServiceTier = useWatch({ control: form.control, name: 'allow_service_tier' })
   const currentDisableStore = useWatch({ control: form.control, name: 'disable_store' })
   const currentAllowSafetyIdentifier = useWatch({ control: form.control, name: 'allow_safety_identifier' })
@@ -1140,8 +977,7 @@ function ChannelMutateDrawerContent({
   )
   const overrideRulesConfigured = Boolean(
     hasConfiguredOverrideValue(currentStatusCodeMapping) ||
-      hasConfiguredOverrideValue(currentParamOverride) ||
-      hasConfiguredOverrideValue(currentHeaderOverride)
+      hasConfiguredOverrideValue(currentParamOverride)
   )
   const extraSettingsConfigured = Boolean(
     currentForceFormat ||
@@ -1150,9 +986,6 @@ function ChannelMutateDrawerContent({
       currentSessionAffinityEnabled ||
       currentDisableTaskPollingSleep ||
       currentProxy?.trim() ||
-      currentSystemPrompt?.trim() ||
-      currentUserSystemPromptOverride ||
-      Object.keys(currentSystemPromptModels ?? {}).length > 0 ||
       (currentHttpProtocol && currentHttpProtocol !== 'auto') ||
       (currentHttp2ConnectionShards != null && currentHttp2ConnectionShards > 1)
   )
@@ -1382,7 +1215,6 @@ function ChannelMutateDrawerContent({
       initialModelMappingRef.current = channelData.data.model_mapping || ''
       initialStatusCodeMappingRef.current =
         channelData.data.status_code_mapping || ''
-      lastJailbreakPresetRef.current = defaults.system_prompt_preset || ''
     } else if (!isEditing && !isInline) {
       form.reset(CHANNEL_FORM_DEFAULT_VALUES)
       setQuickCreateText('')
@@ -1391,7 +1223,6 @@ function ChannelMutateDrawerContent({
       initialModelsRef.current = []
       initialModelMappingRef.current = ''
       initialStatusCodeMappingRef.current = ''
-      lastJailbreakPresetRef.current = ''
     }
   }, [channelData, form, isEditing, isInline, isPresented, channelId])
 
@@ -2126,7 +1957,7 @@ function ChannelMutateDrawerContent({
               ) : (
                 <div className='grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start min-h-0'>
                   {isPresented && (
-                    <ChannelMobileSectionNav
+                    <FloatingSectionNav
                       items={editorNavItems}
                       activeItemId={activeEditorSectionId}
                       onNavigate={handleEditorNavNavigate}
@@ -3950,101 +3781,6 @@ function ChannelMutateDrawerContent({
                                 )}
                               />
 
-                              <FormField
-                                control={form.control}
-                                name='header_override'
-                                render={({ field }) => (
-                                  <FormItem className='space-y-3 pt-4'>
-                                    <div className='flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between'>
-                                      <div className='space-y-1'>
-                                        <FormLabel>
-                                          {t('Request Header Override')}
-                                        </FormLabel>
-                                        <FormDescription>
-                                          {t('Override request headers')}
-                                        </FormDescription>
-                                      </div>
-                                      <div className='flex flex-wrap gap-2'>
-                                        <Button
-                                          type='button'
-                                          variant='outline'
-                                          size='sm'
-                                          onClick={() =>
-                                            field.onChange(
-                                              JSON.stringify(
-                                                {
-                                                  '*': true,
-                                                  're:^X-Trace-.*$': true,
-                                                  'X-Foo':
-                                                    '{client_header:X-Foo}',
-                                                  Authorization:
-                                                    'Bearer {api_key}',
-                                                },
-                                                null,
-                                                2
-                                              )
-                                            )
-                                          }
-                                        >
-                                          {t('Fill Template')}
-                                        </Button>
-                                        <Button
-                                          type='button'
-                                          variant='outline'
-                                          size='sm'
-                                          onClick={() =>
-                                            field.onChange(
-                                              JSON.stringify(
-                                                { '*': true },
-                                                null,
-                                                2
-                                              )
-                                            )
-                                          }
-                                        >
-                                          {t('Passthrough Template')}
-                                        </Button>
-                                        <Button
-                                          type='button'
-                                          variant='ghost'
-                                          size='sm'
-                                          onClick={() => field.onChange('')}
-                                        >
-                                          {t('Clear')}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                    <FormControl>
-                                      <JsonCodeEditor
-                                        value={field.value || ''}
-                                        onChange={field.onChange}
-                                        name={field.name}
-                                        onBlur={field.onBlur}
-                                        textareaRef={field.ref}
-                                        disabled={
-                                          sensitiveLocked || isSubmitting
-                                        }
-                                        placeholder={t(
-                                          'Enter JSON to override request headers'
-                                        )}
-                                        heightClassName='h-40 min-h-40 max-h-40'
-                                      />
-                                    </FormControl>
-                                    <FormDescription className='text-xs'>
-                                      {t('Supported variables')}:{' '}
-                                      <code className='bg-muted rounded px-1 py-0.5'>
-                                        {'{api_key}'}
-                                      </code>{' '}
-                                      — {t('Channel key')},{' '}
-                                      <code className='bg-muted rounded px-1 py-0.5'>
-                                        {'{client_header:NAME}'}
-                                      </code>{' '}
-                                      — {t('Client header value')}
-                                    </FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
                             </fieldset>
                           </div>
                         </div>
@@ -4368,300 +4104,6 @@ function ChannelMutateDrawerContent({
                                             'Spread HTTP/2 traffic across multiple reusable connections to the same upstream origin (1-8).'
                                           )}
                                     </FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )
-                              }}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name='system_prompt'
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>{t('System Prompt')}</FormLabel>
-                                  <FormControl>
-                                    <Textarea
-                                      placeholder={t(
-                                        'Enter system prompt (counts toward context and input tokens)'
-                                      )}
-                                      rows={3}
-                                      {...field}
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    {t(
-                                      'Default system prompt for this channel (counts toward context and input tokens)'
-                                    )}
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name='system_prompt_preset'
-                              render={({ field }) => (
-                                <FormItem>
-                                  <div className='flex items-center justify-between gap-3'>
-                                    <div className='flex min-w-0 flex-1 items-center gap-3'>
-                                      <FormLabel className='shrink-0'>
-                                        {t('Jailbreak')}
-                                      </FormLabel>
-                                      {field.value ? (
-                                        <Select
-                                          items={systemPromptPresetItems}
-                                          value={
-                                            field.value ||
-                                            SYSTEM_PROMPT_PRESET_AUTO
-                                          }
-                                          onValueChange={(value) => {
-                                            const next = value ?? ''
-                                            lastJailbreakPresetRef.current = next
-                                            field.onChange(next)
-                                          }}
-                                        >
-                                          {/* Not wrapped in FormControl on
-                                              purpose: the Switch below owns the
-                                              field id, and a second owner would
-                                              make the label point at this
-                                              trigger instead of the switch. */}
-                                          <SelectTrigger
-                                            disabled={presetsLoading}
-                                            className='min-w-0 max-w-full'
-                                          >
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          {/* The panel paints a solid popover
-                                              colour — the translucent float
-                                              surface let the busy form bleed
-                                              through — and sizes to its widest
-                                              preset instead of inheriting the
-                                              trigger width, which cut the long
-                                              labels. */}
-                                          <SelectContent
-                                            alignItemWithTrigger={false}
-                                            className='w-max min-w-[var(--anchor-width)] max-w-[calc(100vw-2rem)] [--float-surface:var(--popover)]'
-                                          >
-                                            {systemPromptPresetGroups.map(
-                                              (group) => (
-                                                <SelectGroup key={group.family}>
-                                                  <SelectLabel>
-                                                    {group.label}
-                                                  </SelectLabel>
-                                                  {group.items.map((item) => (
-                                                    <SelectItem
-                                                      key={item.value}
-                                                      value={item.value}
-                                                    >
-                                                      {item.label}
-                                                    </SelectItem>
-                                                  ))}
-                                                </SelectGroup>
-                                              )
-                                            )}
-                                          </SelectContent>
-                                        </Select>
-                                      ) : null}
-                                    </div>
-                                    <FormControl>
-                                      <Switch
-                                        checked={jailbreakEnabled}
-                                        onCheckedChange={(v) => {
-                                          if (v) {
-                                            field.onChange(
-                                              lastJailbreakPresetRef.current ||
-                                                SYSTEM_PROMPT_PRESET_AUTO
-                                            )
-                                          } else {
-                                            // Keep the last choice so toggling the
-                                            // switch back on restores it instead
-                                            // of resetting the operator's pick.
-                                            lastJailbreakPresetRef.current =
-                                              field.value || ''
-                                            field.onChange('')
-                                          }
-                                        }}
-                                      />
-                                    </FormControl>
-                                  </div>
-                                  <FormDescription>
-                                    {t('Prepend the jailbreak preset to the system prompt (counts toward context and input tokens)')}
-                                  </FormDescription>
-                                  {field.value ? (
-                                    <FormDescription>
-                                      {t(
-                                        'Automatic selection picks the preset matching the request model; pick a fixed preset to use it for every model.'
-                                      )}
-                                    </FormDescription>
-                                  ) : null}
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name='user_system_prompt_override'
-                              render={({ field }) => (
-                                <FormItem className='flex items-center justify-between'>
-                                  <div className='space-y-0.5'>
-                                    <FormLabel>
-                                      {t('Override User System Prompt')}
-                                    </FormLabel>
-                                    <FormDescription>
-                                      {t(
-                                        'Replace the user system prompt with the channel system prompt (the channel prompt still counts toward the context window and input tokens)'
-                                      )}
-                                    </FormDescription>
-                                  </div>
-                                  <FormControl>
-                                    <Switch
-                                      checked={field.value}
-                                      onCheckedChange={field.onChange}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name='system_prompt_models'
-                              render={({ field }) => {
-                                const rows = useMemo(
-                                  () =>
-                                    Object.entries(
-                                      field.value ?? {}
-                                    ).map(([model, prompt]) => ({
-                                      model,
-                                      prompt,
-                                    })),
-                                  [field.value]
-                                )
-
-                                const toRecord = (
-                                  list: { model: string; prompt: string }[]
-                                ): Record<string, string> => {
-                                  const record: Record<string, string> = {}
-                                  list.forEach((row) => {
-                                    const model = row.model.trim()
-                                    if (model) {
-                                      record[model] = row.prompt
-                                    }
-                                  })
-                                  return record
-                                }
-
-                                const updateModel = (
-                                  index: number,
-                                  value: string
-                                ) => {
-                                  field.onChange(
-                                    toRecord(
-                                      rows.map((row, i) =>
-                                        i === index
-                                          ? { ...row, model: value }
-                                          : row
-                                      )
-                                    )
-                                  )
-                                }
-
-                                const updatePrompt = (
-                                  index: number,
-                                  value: string
-                                ) => {
-                                  field.onChange(
-                                    toRecord(
-                                      rows.map((row, i) =>
-                                        i === index
-                                          ? { ...row, prompt: value }
-                                          : row
-                                      )
-                                    )
-                                  )
-                                }
-
-                                const removeRow = (index: number) => {
-                                  field.onChange(
-                                    toRecord(
-                                      rows.filter((_, i) => i !== index)
-                                    )
-                                  )
-                                }
-
-                                const addRow = () => {
-                                  field.onChange(
-                                    toRecord([
-                                      ...rows,
-                                      { model: '', prompt: '' },
-                                    ])
-                                  )
-                                }
-
-                                return (
-                                  <FormItem>
-                                    <FormLabel>
-                                      {t('System Prompt by Model')}
-                                    </FormLabel>
-                                    <FormDescription>
-                                      {t(
-                                        'System Prompt for this model (falls back to channel default; counts toward context and input tokens)'
-                                      )}
-                                    </FormDescription>
-                                    <div className='divide-y divide-border space-y-2'>
-                                      {rows.map((row, index) => (
-                                        <div
-                                          key={index}
-                                          className='flex flex-col sm:flex-row sm:items-end gap-3 p-3'
-                                        >
-                                          <Input
-                                            className='w-full sm:w-48'
-                                            value={row.model}
-                                            onChange={(e) =>
-                                              updateModel(
-                                                index,
-                                                e.target.value
-                                              )
-                                            }
-                                            placeholder={t('Model Name')}
-                                          />
-                                          <Textarea
-                                            className='flex-1 min-w-[120px]'
-                                            value={row.prompt}
-                                            onChange={(e) =>
-                                              updatePrompt(
-                                                index,
-                                                e.target.value
-                                              )
-                                            }
-                                            placeholder={t(
-                                              'Enter system prompt (counts toward context and input tokens)'
-                                            )}
-                                            rows={2}
-                                          />
-                                          <Button
-                                            type='button'
-                                            variant='outline'
-                                            size='icon'
-                                            onClick={() => removeRow(index)}
-                                            aria-label={t('Delete')}
-                                          >
-                                            <Trash2 className='h-4 w-4' />
-                                          </Button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    <Button
-                                      type='button'
-                                      variant='outline'
-                                      onClick={addRow}
-                                      className='w-fit'
-                                    >
-                                      <Plus className='h-4 w-4' />
-                                      {t('Add Model Prompt')}
-                                    </Button>
                                     <FormMessage />
                                   </FormItem>
                                 )
@@ -5063,20 +4505,11 @@ function ChannelMutateDrawerContent({
         </SheetContent>
       </Sheet>
 
-      {isPresented &&
-        showBackToTop &&
-        createPortal(
-          <Button
-            type='button'
-            size='icon'
-            className='fixed right-4 bottom-4 z-[60] rounded-full shadow-lg lg:bottom-6'
-            onClick={handleBackToTop}
-            aria-label={t('Back to top')}
-          >
-            <ArrowUp className='h-4 w-4' aria-hidden='true' />
-          </Button>,
-          document.body
-        )}
+      <FloatingBackToTop
+        visible={isPresented && showBackToTop}
+        onClick={handleBackToTop}
+        label={t('Back to top')}
+      />
       {isInline && actionsContainer && editorActions
         ? createPortal(editorActions, actionsContainer)
         : null}

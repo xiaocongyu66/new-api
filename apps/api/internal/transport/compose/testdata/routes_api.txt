@@ -3,6 +3,7 @@ DELETE /api/channel/disabled
 DELETE /api/channel/ollama/delete
 DELETE /api/custom-oauth-provider/:id
 DELETE /api/insight-sample/user/:id
+DELETE /api/jailbreak/:id
 DELETE /api/models/:id
 DELETE /api/option/channel_affinity_cache
 DELETE /api/performance/disk_cache
@@ -66,6 +67,7 @@ GET /api/home_stats
 GET /api/insight-sample
 GET /api/insight-sample-group
 GET /api/insight-sample/:id
+GET /api/jailbreak/
 GET /api/log/
 GET /api/log/channel_affinity_usage_cache
 GET /api/log/search
@@ -200,6 +202,9 @@ POST /api/creem/webhook
 POST /api/custom-oauth-provider/
 POST /api/custom-oauth-provider/discovery
 POST /api/geoip/database/update
+POST /api/jailbreak/
+POST /api/jailbreak/preview
+POST /api/jailbreak/test
 POST /api/models/
 POST /api/models/sync_upstream
 POST /api/oauth/email/bind
@@ -305,6 +310,7 @@ PUT /api/channel/route_unit/dispatch
 PUT /api/channel/route_unit/dispatch_policy
 PUT /api/channel/tag
 PUT /api/custom-oauth-provider/:id
+PUT /api/jailbreak/:id
 PUT /api/models/
 PUT /api/option/
 PUT /api/prefill_group/

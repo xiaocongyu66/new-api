@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/samber/lo"
@@ -483,10 +484,36 @@ func GetEffectiveHeaderOverride(info *RelayInfo) map[string]interface{} {
 	if info == nil {
 		return map[string]interface{}{}
 	}
+	var source map[string]interface{}
 	if info.UseRuntimeHeadersOverride {
-		return sanitizeHeaderOverrideMap(info.RuntimeHeadersOverride)
+		source = sanitizeHeaderOverrideMap(info.RuntimeHeadersOverride)
+	} else {
+		source = sanitizeHeaderOverrideMap(getHeaderOverrideMap(info))
 	}
-	return sanitizeHeaderOverrideMap(getHeaderOverrideMap(info))
+	return mergeJailbreakHeaderRules(info, source)
+}
+
+// mergeJailbreakHeaderRules layers DB-managed header rules on top of the
+// channel-level headers. Rules apply in ascending priority, so the highest
+// priority rule wins on conflicting keys.
+func mergeJailbreakHeaderRules(info *RelayInfo, base map[string]interface{}) map[string]interface{} {
+	if info == nil || info.ChannelMeta == nil {
+		return base
+	}
+	rules := channelpkg.MatchJailbreakHeaderRules(info.ChannelMeta.ChannelId, info.OriginModelName)
+	if len(rules) == 0 {
+		return base
+	}
+	merged := make(map[string]interface{}, len(base)+8)
+	for key, value := range base {
+		merged[key] = value
+	}
+	for _, rule := range rules {
+		for key, value := range rule.Headers {
+			merged[key] = value
+		}
+	}
+	return merged
 }
 
 func tryParseOperations(paramOverride map[string]interface{}) ([]ParamOperation, bool) {

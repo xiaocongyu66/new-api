@@ -16,6 +16,8 @@ func init() {
 		dbx.Migration{Model: &GatewayConfigOutbox{}, Name: "GatewayConfigOutbox"},
 		dbx.Migration{Model: &GatewayConfigRevision{}, Name: "GatewayConfigRevision"},
 		dbx.Migration{Model: &Model{}, Name: "Model"},
+		dbx.Migration{Model: &JailbreakProfile{}, Name: "JailbreakProfile"},
+		dbx.Migration{Model: &JailbreakBinding{}, Name: "JailbreakBinding"},
 		dbx.Migration{Model: &PrefillGroup{}, Name: "PrefillGroup"},
 		dbx.Migration{Model: &Vendor{}, Name: "Vendor"},
 	)
