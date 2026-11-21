@@ -1,7 +1,5 @@
 ## new-api conventions
 
-DO NOT send optional commentary
-
 ### Project identity (protected)
 
 Any reference, mention, branding, metadata, or attribution related to **nеw-аρi** (the project
@@ -373,10 +371,13 @@ mixed into a logic change. One task per branch, named with a type prefix (`feat/
 **Pull requests.** Use the repository template at `.github/PULL_REQUEST_TEMPLATE.md` and preserve
 its structure (background / what changed / why / implementation steps / delivery record / how
 verified / checklist) instead of substituting an ad hoc format. Title in plain English
-(conventional-commit style); section headings in English, content in Chinese. Link issues with a
-trailing `Fixes #<n>`; use `Related #<n>` while in draft and switch to `Fixes` before merge
-authorization. After opening or updating a PR, read the CI results to the end (`gh pr checks`); fix
-red, do not wait to be asked.
+(conventional-commit style); section headings in English, content in Chinese. After opening or
+updating a PR, read the CI results to the end (`gh pr checks`); fix red, do not wait to be asked.
+
+**Merging.** PRs are squash-merged: one PR collapses into exactly one commit on `main`, titled after
+the PR. The branch's individual commits are scaffolding — the squash commit is the record, so it must
+read as one logical change with a complete description. Delete the branch and its worktree after the
+merge; never leave a merge commit on `main`.
 
 Compare the current git user (`git config user.name` / `git config user.email`) with the
 repository's historical core developers (the recurring top authors in `git log`). Do not change git
