@@ -21,42 +21,42 @@ const (
 	CmdMenu = "/菜单"
 
 	// 主菜单与各子菜单的回调 data
-	MenuMain     = "nailao_menu:main"
-	MenuCheckin  = "nailao_menu:checkin"
-	MenuWallet   = "nailao_menu:wallet"
-	MenuDrop     = "nailao_menu:drop"
-	MenuRedPack  = "nailao_menu:redpacket"
-	MenuTransfer = "nailao_menu:transfer"
-	MenuAdmin    = "nailao_menu:admin"
-	MenuHelp     = "nailao_menu:help"
+	MenuMain     = "qqbot_menu:main"
+	MenuCheckin  = "qqbot_menu:checkin"
+	MenuWallet   = "qqbot_menu:wallet"
+	MenuDrop     = "qqbot_menu:drop"
+	MenuRedPack  = "qqbot_menu:redpacket"
+	MenuTransfer = "qqbot_menu:transfer"
+	MenuAdmin    = "qqbot_menu:admin"
+	MenuHelp     = "qqbot_menu:help"
 
 	// 普通用户可用的动作
-	MenuActionCheckin       = "nailao_menu:do_checkin"
-	MenuActionBalance       = "nailao_menu:do_balance"
-	MenuActionMyStats       = "nailao_menu:do_my_stats"
-	MenuActionDropStatus    = "nailao_menu:do_drop_status"
-	MenuActionFeeTable      = "nailao_menu:do_fee_table"
-	MenuActionRedPacketList = "nailao_menu:do_rp_list"
+	MenuActionCheckin       = "qqbot_menu:do_checkin"
+	MenuActionBalance       = "qqbot_menu:do_balance"
+	MenuActionMyStats       = "qqbot_menu:do_my_stats"
+	MenuActionDropStatus    = "qqbot_menu:do_drop_status"
+	MenuActionFeeTable      = "qqbot_menu:do_fee_table"
+	MenuActionRedPacketList = "qqbot_menu:do_rp_list"
 
 	// 管理员专属动作
-	MenuActionAdminStatus = "nailao_menu:admin_status"
-	MenuActionDropOn      = "nailao_menu:admin_drop_on"
-	MenuActionDropOff     = "nailao_menu:admin_drop_off"
-	MenuActionCheckinOn   = "nailao_menu:admin_checkin_on"
-	MenuActionCheckinOff  = "nailao_menu:admin_checkin_off"
-	MenuActionTransferOn  = "nailao_menu:admin_transfer_on"
-	MenuActionTransferOff = "nailao_menu:admin_transfer_off"
-	MenuActionSyncPanel   = "nailao_menu:admin_sync_panel"
+	MenuActionAdminStatus = "qqbot_menu:admin_status"
+	MenuActionDropOn      = "qqbot_menu:admin_drop_on"
+	MenuActionDropOff     = "qqbot_menu:admin_drop_off"
+	MenuActionCheckinOn   = "qqbot_menu:admin_checkin_on"
+	MenuActionCheckinOff  = "qqbot_menu:admin_checkin_off"
+	MenuActionTransferOn  = "qqbot_menu:admin_transfer_on"
+	MenuActionTransferOff = "qqbot_menu:admin_transfer_off"
+	MenuActionSyncPanel   = "qqbot_menu:admin_sync_panel"
 
 	// menuButtonID 菜单类按钮统一用这个 ID，具体动作看 data
-	menuButtonID = "nailao_menu_btn"
+	menuButtonID = "qqbot_menu_btn"
 
 	// menuPrefix 菜单回调的公共前缀，用于快速判定
-	menuPrefix = "nailao_menu:"
+	menuPrefix = "qqbot_menu:"
 
 	// adminActionPrefix 管理员专属回调的前缀。
 	// 统一前缀让权限校验只需一次判断，新增管理动作不会漏掉鉴权。
-	adminActionPrefix = "nailao_menu:admin"
+	adminActionPrefix = "qqbot_menu:admin"
 )
 
 // isMenuCommand 判断是否为菜单指令
