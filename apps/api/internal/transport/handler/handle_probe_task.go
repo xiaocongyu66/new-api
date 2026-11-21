@@ -124,7 +124,7 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 			seen[model] = struct{}{}
 
 			tik := time.Now()
-			probeResult := testChannel(ctx, channel, testUserID, model, "", false)
+			probeResult := testChannel(ctx, channel, testUserID, model, "", false, nil)
 			ms := time.Since(tik).Milliseconds()
 			success := probeResult.localErr == nil && probeResult.newAPIError == nil
 			errorCode := ""

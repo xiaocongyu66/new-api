@@ -435,6 +435,17 @@ func SetApiRouter(router contract.Engine) {
 			prefillGroupRoute.DELETE("/:id", handler.DeletePrefillGroup)
 		}
 
+		jailbreakRoute := apiRouter.Group("/jailbreak")
+		jailbreakRoute.Use(security.AdminAuth())
+		{
+			jailbreakRoute.GET("/", handler.GetJailbreakProfiles)
+			jailbreakRoute.POST("/", handler.CreateJailbreakProfile)
+			jailbreakRoute.PUT("/:id", handler.UpdateJailbreakProfile)
+			jailbreakRoute.DELETE("/:id", handler.DeleteJailbreakProfile)
+			jailbreakRoute.POST("/preview", handler.PreviewJailbreakPrompt)
+			jailbreakRoute.POST("/test", handler.TestJailbreakRequest)
+		}
+
 		mjRoute := apiRouter.Group("/mj")
 		mjRoute.GET("/self", security.UserAuth(), handler.GetUserMidjourney)
 		mjRoute.GET("/", security.AdminAuth(), handler.GetAllMidjourney)

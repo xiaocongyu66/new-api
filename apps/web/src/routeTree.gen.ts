@@ -60,6 +60,7 @@ import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedAdminChannelsIndexRouteImport } from './routes/_authenticated/admin/channels/index'
+import { Route as AuthenticatedAdminJailbreakIndexRouteImport } from './routes/_authenticated/admin/jailbreak/index'
 import { Route as AuthenticatedAdminModelsIndexRouteImport } from './routes/_authenticated/admin/models/index'
 import { Route as AuthenticatedAdminModelsSectionRouteImport } from './routes/_authenticated/admin/models/$section'
 import { Route as AuthenticatedAdminRedemptionCodesIndexRouteImport } from './routes/_authenticated/admin/redemption-codes/index'
@@ -378,6 +379,16 @@ const AuthenticatedAdminChannelsIndexRoute =
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any).lazy(() =>
     import('./routes/_authenticated/admin/channels/index.lazy').then(
+      (d) => d.Route,
+    ),
+  )
+const AuthenticatedAdminJailbreakIndexRoute =
+  AuthenticatedAdminJailbreakIndexRouteImport.update({
+    id: '/jailbreak/',
+    path: '/jailbreak/',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/jailbreak/index.lazy').then(
       (d) => d.Route,
     ),
   )
@@ -744,6 +755,7 @@ export interface FileRoutesByFullPath {
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
   '/admin/channels/': typeof AuthenticatedAdminChannelsIndexRoute
+  '/admin/jailbreak/': typeof AuthenticatedAdminJailbreakIndexRoute
   '/admin/models/': typeof AuthenticatedAdminModelsIndexRoute
   '/admin/redemption-codes/': typeof AuthenticatedAdminRedemptionCodesIndexRoute
   '/admin/subscriptions/': typeof AuthenticatedAdminSubscriptionsIndexRoute
@@ -828,6 +840,7 @@ export interface FileRoutesByTo {
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
   '/admin/channels': typeof AuthenticatedAdminChannelsIndexRoute
+  '/admin/jailbreak': typeof AuthenticatedAdminJailbreakIndexRoute
   '/admin/models': typeof AuthenticatedAdminModelsIndexRoute
   '/admin/redemption-codes': typeof AuthenticatedAdminRedemptionCodesIndexRoute
   '/admin/subscriptions': typeof AuthenticatedAdminSubscriptionsIndexRoute
@@ -918,6 +931,7 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/_authenticated/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
   '/_authenticated/admin/channels/': typeof AuthenticatedAdminChannelsIndexRoute
+  '/_authenticated/admin/jailbreak/': typeof AuthenticatedAdminJailbreakIndexRoute
   '/_authenticated/admin/models/': typeof AuthenticatedAdminModelsIndexRoute
   '/_authenticated/admin/redemption-codes/': typeof AuthenticatedAdminRedemptionCodesIndexRoute
   '/_authenticated/admin/subscriptions/': typeof AuthenticatedAdminSubscriptionsIndexRoute
@@ -1007,6 +1021,7 @@ export interface FileRouteTypes {
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
     | '/admin/channels/'
+    | '/admin/jailbreak/'
     | '/admin/models/'
     | '/admin/redemption-codes/'
     | '/admin/subscriptions/'
@@ -1091,6 +1106,7 @@ export interface FileRouteTypes {
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
     | '/admin/channels'
+    | '/admin/jailbreak'
     | '/admin/models'
     | '/admin/redemption-codes'
     | '/admin/subscriptions'
@@ -1180,6 +1196,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/security/$section'
     | '/_authenticated/system-settings/site/$section'
     | '/_authenticated/admin/channels/'
+    | '/_authenticated/admin/jailbreak/'
     | '/_authenticated/admin/models/'
     | '/_authenticated/admin/redemption-codes/'
     | '/_authenticated/admin/subscriptions/'
@@ -1588,6 +1605,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminChannelsIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/jailbreak/': {
+      id: '/_authenticated/admin/jailbreak/'
+      path: '/jailbreak'
+      fullPath: '/admin/jailbreak/'
+      preLoaderRoute: typeof AuthenticatedAdminJailbreakIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/models/': {
       id: '/_authenticated/admin/models/'
       path: '/models'
@@ -1932,6 +1956,7 @@ interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedAdminModelsSectionRoute: typeof AuthenticatedAdminModelsSectionRoute
   AuthenticatedAdminChannelsIndexRoute: typeof AuthenticatedAdminChannelsIndexRoute
+  AuthenticatedAdminJailbreakIndexRoute: typeof AuthenticatedAdminJailbreakIndexRoute
   AuthenticatedAdminModelsIndexRoute: typeof AuthenticatedAdminModelsIndexRoute
   AuthenticatedAdminRedemptionCodesIndexRoute: typeof AuthenticatedAdminRedemptionCodesIndexRoute
   AuthenticatedAdminSubscriptionsIndexRoute: typeof AuthenticatedAdminSubscriptionsIndexRoute
@@ -1948,6 +1973,8 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
     AuthenticatedAdminModelsSectionRoute: AuthenticatedAdminModelsSectionRoute,
     AuthenticatedAdminChannelsIndexRoute: AuthenticatedAdminChannelsIndexRoute,
+    AuthenticatedAdminJailbreakIndexRoute:
+      AuthenticatedAdminJailbreakIndexRoute,
     AuthenticatedAdminModelsIndexRoute: AuthenticatedAdminModelsIndexRoute,
     AuthenticatedAdminRedemptionCodesIndexRoute:
       AuthenticatedAdminRedemptionCodesIndexRoute,

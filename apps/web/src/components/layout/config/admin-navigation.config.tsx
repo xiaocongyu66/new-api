@@ -23,6 +23,7 @@ import {
   Radio,
   ScanSearch,
   ServerCog,
+  ShieldOff,
   Settings,
   Ticket,
   Users,
@@ -66,6 +67,12 @@ export const ADMIN_NAVIGATION: readonly AdminNavigationItem[] = [
     to: '/admin/proxy',
     icon: Network,
     requiredRole: ROLE.SUPER_ADMIN,
+  },
+  {
+    id: 'jailbreak',
+    labelKey: 'admin.requestRules',
+    to: '/admin/jailbreak',
+    icon: ShieldOff,
   },
   {
     id: 'system-info',

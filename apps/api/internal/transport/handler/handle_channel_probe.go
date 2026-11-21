@@ -40,9 +40,10 @@ import (
 )
 
 type testResult struct {
-	context     contract.Context
-	localErr    error
-	newAPIError *types.NewAPIError
+	context      contract.Context
+	localErr     error
+	newAPIError  *types.NewAPIError
+	responseBody []byte
 }
 
 func normalizeChannelTestEndpoint(channel *channelpkg.Channel, modelName, endpointType string) string {
@@ -93,7 +94,7 @@ func isChannelTypeTestUnsupported(channelType int) bool {
 	return lo.Contains(unsupportedTestChannelTypes, channelType)
 }
 
-func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID int, testModel string, endpointType string, isStream bool, messages []dto.Message) testResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -254,6 +255,14 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
+	if len(messages) > 0 {
+		if openAIRequest, ok := request.(*dto.GeneralOpenAIRequest); ok {
+			openAIRequest.Messages = messages
+			// Interactive tests need room for reasoning plus the final answer;
+			// the fixed channel probe budget would truncate thinking models.
+			openAIRequest.MaxTokens = lo.ToPtr(uint(2048))
+		}
+	}
 
 	info, err := gateway.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -535,9 +544,10 @@ func testChannel(ctx context.Context, channel *channelpkg.Channel, testUserID in
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
 	return testResult{
-		context:     c,
-		localErr:    nil,
-		newAPIError: nil,
+		context:      c,
+		localErr:     nil,
+		newAPIError:  nil,
+		responseBody: respBody,
 	}
 }
 
@@ -895,7 +905,7 @@ func TestChannel(c contract.Context) {
 	}
 	tik := time.Now()
 	requestCtx := c.Context()
-	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream, nil)
 	if result.localErr != nil {
 		resp := common.H{
 			"success": false,
@@ -962,7 +972,7 @@ func performChannelTests(ctx context.Context, channels []*channelpkg.Channel, te
 		}
 		isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 		tik := time.Now()
-		result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+		result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), nil)
 		tok := time.Now()
 		milliseconds := tok.Sub(tik).Milliseconds()
 		if ctx != nil && ctx.Err() != nil {
