@@ -68,6 +68,9 @@ function getDefaultEndpointForChannel(channel: UpstreamChannel): string {
   return DEFAULT_ENDPOINT
 }
 const ANALYSIS_CACHE_KEY = 'pricing-analysis-cache-v1'
+// The channel selection decides which upstreams the analysis prices against; losing it
+// on reload silently reverted the comparison to the models.dev reference preset.
+const SELECTION_STORAGE_KEY = 'pricing-analysis-selected-channels-v1'
 const ANALYSIS_REFRESH_MS = 5 * 60 * 1000
 
 type AnalysisSignature = {
@@ -116,7 +119,15 @@ export function UpstreamRatioSync() {
   const { t } = useTranslation()
 
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
-  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([])
+  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(SELECTION_STORAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : null
+      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'number') : []
+    } catch {
+      return []
+    }
+  })
   const [channelEndpoints, setChannelEndpoints] = useState<
     Record<number, string>
   >({})
@@ -225,6 +236,14 @@ export function UpstreamRatioSync() {
   const handleOpenChannelDialog = () => {
     setChannelDialogOpen(true)
   }
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(selectedChannelIds))
+    } catch {
+      // Storage may be unavailable; the selection still works for this page view.
+    }
+  }, [selectedChannelIds])
 
   const handleConfirmChannelSelection = (selectedIds: number[]) => {
     const selectedChannels = channels.filter((ch) =>
