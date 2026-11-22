@@ -62,23 +62,25 @@ func upstreamAliasMap(channelId int) (map[string]string, error) {
 	return out, nil
 }
 
-// upstreamGET 发送一次带 SSRF 防护、超时与体积上限的上游 GET，返回响应体。
-func upstreamGET(ctx context.Context, channel *channelpkg.Channel, rawURL string) ([]byte, error) {
+// newUpstreamRequest 构造一个带 SSRF 校验与超时的上游 GET 请求。
+func newUpstreamRequest(ctx context.Context, rawURL string) (*http.Request, error) {
 	if err := egress.ValidateSSRFProtectedFetchURL(rawURL); err != nil {
 		return nil, fmt.Errorf("request reject: %v", err)
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, upstreamPerfTimeout)
-	defer cancel()
-
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	if key, _, keyErr := channel.GetNextEnabledKey(""); keyErr == nil && strings.TrimSpace(key) != "" {
-		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(key))
-	}
+	// 请求随 ctx 结束；cancel 由 ctx 的 deadline 兜住，这里不提前释放。
+	_ = cancel
+	return req, nil
+}
 
+// doUpstreamRequest 发送请求并读取受限长度响应体。
+func doUpstreamRequest(req *http.Request) ([]byte, error) {
 	// GetSSRFProtectedHTTPClient 在启动初始化前可能为 nil（例如后台任务先于
 	// InitHttpClient 启动）。裸调用会 panic，这里兜底到一个带超时的客户端，
 	// 初始 URL 已通过 ValidateSSRFProtectedFetchURL 校验。
@@ -99,6 +101,18 @@ func upstreamGET(ctx context.Context, channel *channelpkg.Channel, rawURL string
 		return nil, fmt.Errorf("upstream perf status %d", resp.StatusCode)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+}
+
+// upstreamGET 发送一次带渠道密钥的上游 GET（new-api 形态）。
+func upstreamGET(ctx context.Context, channel *channelpkg.Channel, rawURL string) ([]byte, error) {
+	req, err := newUpstreamRequest(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if key, _, keyErr := channel.GetNextEnabledKey(""); keyErr == nil && strings.TrimSpace(key) != "" {
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(key))
+	}
+	return doUpstreamRequest(req)
 }
 
 // FetchUpstreamPerf 调用上游站性能接口，返回 本地模型别名 → 逐小时序列。
@@ -156,6 +170,7 @@ func FetchUpstreamPerf(ctx context.Context, channel *channelpkg.Channel) (*upstr
 		}
 		points, pErr := fetchUpstreamModelSeries(ctx, channel, base, upstreamName)
 		if pErr != nil || len(points) == 0 {
+			common.SysLog(fmt.Sprintf("upstream series unavailable channel=%d model=%q err=%v points=%d", channel.Id, upstreamName, pErr, len(points)))
 			// 单模型接口不可用时退回 summary 的 success_rate 单点，
 			// 至少保留该模型最近窗口的汇总值。
 			if m.SuccessRate >= 0 {

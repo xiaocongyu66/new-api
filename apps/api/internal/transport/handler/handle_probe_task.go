@@ -100,12 +100,31 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 		}
 		report(index, total)
 
-		snap, err := ops.FetchUpstreamPerf(ctx, channel)
-		if err != nil {
-			common.SysLog(fmt.Sprintf("channel %d upstream perf unavailable, skipped: %v", channel.Id, err))
-			continue
+		// Fallback 链：new-api 性能接口 → sub2api 用量流水 → 本地真实请求。
+		// 前两者都是零推理消耗的上游统计；两者都取不到时才退回本地真实请求
+		// （那是唯一还有意义的证据，但只反映本站自己的流量）。
+		var models map[string][]ops.UpstreamHourPoint
+		snap, perfErr := ops.FetchUpstreamPerf(ctx, channel)
+		if perfErr == nil {
+			models = snap.Models
+		} else {
+			sub2, sub2Err := ops.FetchSub2APIPerf(ctx, channel)
+			if sub2Err == nil {
+				models = sub2
+				common.SysLog(fmt.Sprintf("channel %d using sub2api perf fallback", channel.Id))
+			} else {
+				local, localErr := ops.FetchLocalRequestPerf(ctx, channel)
+				if localErr == nil {
+					models = local
+					common.SysLog(fmt.Sprintf("channel %d using local request fallback", channel.Id))
+				} else {
+					common.SysLog(fmt.Sprintf("channel %d has no perf source: newapi=%v sub2api=%v local=%v",
+						channel.Id, perfErr, sub2Err, localErr))
+					continue
+				}
+			}
 		}
-		for alias, points := range snap.Models {
+		for alias, points := range models {
 			for _, point := range points {
 				bucketTs := point.Ts
 				if bucketTs <= 0 {

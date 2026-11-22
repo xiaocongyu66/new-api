@@ -155,6 +155,10 @@ type ChannelOtherSettings struct {
 	// ProbePolicy 是该渠道的路由健康探测策略：基于模型级 24h 探测可用率
 	// 自动禁用/恢复模型路由，并驱动 webhook 通知。nil 表示未配置（不自动控制）。
 	ProbePolicy *ChannelProbePolicy `json:"probe_policy,omitempty"`
+	// Sub2APIAccessToken 是该上游（sub2api 面板）的用户 access token。
+	// 探活用它调用 /api/v1/usage 与 /api/v1/usage/errors 派生成功率与延迟；
+	// 中转密钥（sk-...）对这两个接口无效，必须单独配置。
+	Sub2APIAccessToken string `json:"sub2api_access_token,omitempty"`
 }
 
 // ChannelProbePolicy 是渠道级探测策略。迟滞带 [DisableBelow, EnableAbove)
