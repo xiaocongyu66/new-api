@@ -177,29 +177,94 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 	}
 
 	tested := 0
+	snapshots := make([]ops.ModelAvailabilitySnapshot, 0, len(outcomes))
 	for index, channel := range channels {
 		if ctx != nil && ctx.Err() != nil {
 			break
 		}
 		report(index, total)
 
+		// Channel aggregate over the units that real traffic measured this
+		// window. Models on this channel without their own traffic inherit it,
+		// so every model on a serving channel stays charted.
+		var aggRateSum, aggLatSum float64
+		aggN := 0
 		for _, key := range byChannel[channel.Id] {
+			o := outcomes[key]
+			rate := 0.0
+			if o.Success {
+				rate = 100
+			}
+			aggRateSum += rate
+			aggLatSum += float64(o.LatencyMs)
+			aggN++
+		}
+		var chRate float64
+		var chLat int64
+		if aggN > 0 {
+			chRate = aggRateSum / float64(aggN)
+			chLat = int64(aggLatSum / float64(aggN))
+		}
+
+		seen := make(map[string]struct{}, len(channel.GetModels()))
+		for _, rawModel := range channel.GetModels() {
 			if ctx != nil && ctx.Err() != nil {
 				break
 			}
-			outcome := outcomes[key]
+			model := strings.TrimSpace(rawModel)
+			if model == "" {
+				continue
+			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+
+			var success bool
+			var latencyMs int64
+			var errorCode string
+			var rate float64
+			source := "channel"
+			outcome, ok := outcomes[probeUnitKey{ChannelId: channel.Id, Model: model}]
+			if ok {
+				success = outcome.Success
+				latencyMs = outcome.LatencyMs
+				errorCode = outcome.ErrorCode
+				if success {
+					rate = 100
+				}
+				source = "request"
+			} else if aggN > 0 {
+				success = chRate >= 50
+				latencyMs = chLat
+				rate = chRate
+			} else {
+				// The channel carried no traffic in the window at all: no
+				// honest availability claim exists for any of its models.
+				continue
+			}
+
 			if err := dbx.DB.Create(&ops.ChannelProbeResult{
 				ChannelId: channel.Id,
-				Model:     key.Model,
-				Success:   outcome.Success,
-				LatencyMs: outcome.LatencyMs,
-				ErrorCode: outcome.ErrorCode,
+				Model:     model,
+				Success:   success,
+				LatencyMs: latencyMs,
+				ErrorCode: errorCode,
 				CreatedAt: now,
 			}).Error; err != nil {
 				common.SysError("probe result persist failed: " + err.Error())
 			}
+			snapshots = append(snapshots, ops.ModelAvailabilitySnapshot{
+				Model:     model,
+				ChannelId: channel.Id,
+				Success:   success,
+				Rate:      rate,
+				LatencyMs: latencyMs,
+				Source:    source,
+				CreatedAt: now,
+			})
 			tested++
-			if outcome.Success {
+			if success {
 				result.Succeeded++
 			} else {
 				result.Failed++
@@ -211,6 +276,8 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 	}
 	result.Tested = tested
 
+	// Durable copy survives restarts; the transient table keeps only a week.
+	ops.PersistModelAvailability(snapshots)
 	if err := dbx.DB.Where("created_at < ?", now-7*24*3600).
 		Delete(&ops.ChannelProbeResult{}).Error; err != nil {
 		common.SysError("probe result cleanup failed: " + err.Error())

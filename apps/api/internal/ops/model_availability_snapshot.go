@@ -1,0 +1,173 @@
+package ops
+
+import (
+	"context"
+
+	"github.com/QuantumNous/new-api/internal/common"
+	"github.com/QuantumNous/new-api/internal/common/dbx"
+	"github.com/QuantumNous/new-api/internal/usage"
+)
+
+// ModelAvailabilitySnapshot is one durable availability observation for a
+// (channel, model) unit.
+//
+// Availability used to live only in transient aggregates, so a redeploy or a
+// restart could blank the model square until new traffic arrived. Persisting
+// each run makes the picture survive restarts: the newest snapshot per unit is
+// still readable right after a deploy.
+//
+// Retention is deliberately short and bounded:
+//   - rows older than modelAvailabilityTTL are deleted, so a channel that stops
+//     serving disappears within a day instead of lingering forever;
+//   - at most modelAvailabilityPerModel rows are kept per model, which caps the
+//     table no matter how often probing runs.
+type ModelAvailabilitySnapshot struct {
+	Id        int64  `json:"id" gorm:"primaryKey"`
+	Model     string `json:"model" gorm:"size:255;index:idx_avail_model_created,priority:1"`
+	ChannelId int    `json:"channel_id" gorm:"index"`
+	Success   bool   `json:"success"`
+	// Rate is 0-100. Own-traffic snapshots carry 100/0; units whose channel
+	// has traffic but the model itself does not carry the channel aggregate.
+	Rate      float64 `json:"rate"`
+	LatencyMs int64   `json:"latency_ms"`
+	TtftMs    *int64  `json:"ttft_ms"`
+	Source    string  `json:"source" gorm:"size:32"`
+	CreatedAt int64   `json:"created_at" gorm:"index:idx_avail_model_created,priority:2;index"`
+}
+
+func (ModelAvailabilitySnapshot) TableName() string { return "model_availability_snapshots" }
+
+const (
+	// modelAvailabilityTTL bounds how old a snapshot may be. A unit that stops
+	// being observed ages out within a day.
+	modelAvailabilityTTL = 24 * 3600
+	// modelAvailabilityPerModel bounds the rows kept per model.
+	modelAvailabilityPerModel = 24
+)
+
+func init() {
+	dbx.RegisterMigrations(dbx.Migration{Model: &ModelAvailabilitySnapshot{}, Name: "ModelAvailabilitySnapshot"})
+}
+
+// PersistModelAvailability appends one snapshot per unit and then applies
+// retention. Best effort: a failure is logged and never breaks the probe run.
+func PersistModelAvailability(snapshots []ModelAvailabilitySnapshot) {
+	if len(snapshots) == 0 {
+		return
+	}
+	if err := dbx.DB.CreateInBatches(snapshots, 200).Error; err != nil {
+		common.SysError("availability snapshot persist failed: " + err.Error())
+		return
+	}
+	trimModelAvailability()
+}
+
+// trimModelAvailability deletes expired rows and then keeps only the newest
+// modelAvailabilityPerModel rows per model.
+func trimModelAvailability() {
+	now := common.GetTimestamp()
+	if err := dbx.DB.Where("created_at < ?", now-modelAvailabilityTTL).
+		Delete(&ModelAvailabilitySnapshot{}).Error; err != nil {
+		common.SysError("availability snapshot expiry failed: " + err.Error())
+	}
+
+	// Bounded per model. The ordered scan is cheap: the table is capped at
+	// 24 rows per model by this very function.
+	type snapshotRow struct {
+		Id    int64
+		Model string
+	}
+	var rows []snapshotRow
+	if err := dbx.DB.Model(&ModelAvailabilitySnapshot{}).
+		Select("id, model").
+		Order("model ASC, created_at DESC, id DESC").
+		Find(&rows).Error; err != nil {
+		common.SysError("availability snapshot trim scan failed: " + err.Error())
+		return
+	}
+	seen := make(map[string]int, len(rows))
+	drop := make([]int64, 0)
+	for _, row := range rows {
+		seen[row.Model]++
+		if seen[row.Model] > modelAvailabilityPerModel {
+			drop = append(drop, row.Id)
+		}
+	}
+	if len(drop) == 0 {
+		return
+	}
+	if err := dbx.DB.Where("id IN ?", drop).Delete(&ModelAvailabilitySnapshot{}).Error; err != nil {
+		common.SysError("availability snapshot trim failed: " + err.Error())
+	}
+}
+
+// LoadModelAvailability24h returns the newest snapshot per (model, channel)
+// inside the TTL. Aggregation stays in the caller so the probe thresholds and
+// the model square agree on the same rows.
+func LoadModelAvailability24h(ctx context.Context) ([]ModelAvailabilitySnapshot, error) {
+	cutoff := common.GetTimestamp() - modelAvailabilityTTL
+	var rows []ModelAvailabilitySnapshot
+	err := dbx.DB.WithContext(ctx).
+		Where("created_at >= ?", cutoff).
+		Order("model ASC, created_at DESC").
+		Find(&rows).Error
+	return rows, err
+}
+
+// LoadAvailabilitySnapshotsAsHealth turns the newest snapshot per
+// (channel, model) into upstream-health points, weighted by the channel's
+// static route weight. Units whose model never saw traffic inherit their
+// channel's aggregate, so every model on a serving channel stays charted.
+func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHealthPoint, error) {
+	cutoff := common.GetTimestamp() - modelAvailabilityTTL
+	var snaps []ModelAvailabilitySnapshot
+	if err := dbx.DB.WithContext(ctx).
+		Where("created_at >= ?", cutoff).
+		Order("model ASC, created_at DESC, id DESC").
+		Find(&snaps).Error; err != nil {
+		return nil, err
+	}
+
+	type unitKey struct {
+		channelId int
+		model     string
+	}
+	type healthRow struct {
+		ChannelId int
+		Model     string
+	}
+	var routes []healthRow
+	if err := dbx.DB.WithContext(ctx).Table("channel_model_routes AS r").
+		Select("r.channel_id, r.upstream_model AS model").
+		Where("r.enabled = ?", true).
+		Group("r.channel_id, r.upstream_model").
+		Find(&routes).Error; err != nil {
+		return nil, err
+	}
+
+	routed := make(map[unitKey]struct{}, len(routes))
+	for _, r := range routes {
+		routed[unitKey{r.ChannelId, r.Model}] = struct{}{}
+	}
+
+	seen := make(map[unitKey]struct{}, len(snaps))
+	points := make([]usage.UpstreamHealthPoint, 0, len(snaps))
+	for _, snap := range snaps {
+		key := unitKey{snap.ChannelId, snap.Model}
+		if _, ok := seen[key]; ok {
+			continue // snapshots arrive newest-first; the first one wins
+		}
+		if _, ok := routed[key]; !ok {
+			continue // not routable: the model square never shows it
+		}
+		seen[key] = struct{}{}
+		points = append(points, usage.UpstreamHealthPoint{
+			Model:      snap.Model,
+			ChannelID:  snap.ChannelId,
+			Rate:       snap.Rate,
+			LatencyMs:  snap.LatencyMs,
+			ObservedAt: snap.CreatedAt,
+		})
+	}
+	return points, nil
+}

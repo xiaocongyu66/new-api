@@ -269,6 +269,24 @@ func GetPerfMetricsSummary(c contract.Context) {
 		common.SysError("load upstream health for perf summary: " + err.Error())
 		upstreamPoints = nil
 	}
+	// Availability snapshots cover every model on a serving channel, including
+	// ones whose traffic has aged out of the health table, so they fill the
+	// gaps instead of leaving cards blank after a deploy.
+	snapshotPoints, err := ops.LoadAvailabilitySnapshotsAsHealth(context.Background())
+	if err != nil {
+		common.SysError("load availability snapshots for perf summary: " + err.Error())
+		snapshotPoints = nil
+	}
+	seenUnits := make(map[usage.UpstreamHealthPoint]struct{}, len(upstreamPoints))
+	for _, p := range upstreamPoints {
+		seenUnits[usage.UpstreamHealthPoint{Model: p.Model, ChannelID: p.ChannelID}] = struct{}{}
+	}
+	for _, p := range snapshotPoints {
+		key := usage.UpstreamHealthPoint{Model: p.Model, ChannelID: p.ChannelID}
+		if _, ok := seenUnits[key]; !ok {
+			upstreamPoints = append(upstreamPoints, p)
+		}
+	}
 	result, err := usage.QuerySummaryAll(hours, activeGroups, upstreamPoints)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{
