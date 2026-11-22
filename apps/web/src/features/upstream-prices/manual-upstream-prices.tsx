@@ -62,6 +62,44 @@ function formatPerCall(value: number): string {
 
 // 输入价格列按计费方式换单位：按次是美元/次，按量是美元/百万 tokens，
 // 表达式模式没有单列价格。
+// 窄屏卡片里的价格明细：按计费方式只展示有意义的字段。
+function mobilePriceFields(
+  row: ManualUpstreamPrice,
+  t: (key: string) => string
+): ReactNode {
+  if (row.mode === 'per_call') {
+    return (
+      <div>
+        <dt className='text-muted-foreground'>{t('Price (USD / request)')}</dt>
+        <dd className='tabular-nums'>{formatPerCall(row.price_in)}</dd>
+      </div>
+    )
+  }
+  if (row.mode === 'per_token') {
+    return (
+      <>
+        <div>
+          <dt className='text-muted-foreground'>{t('Input price')}</dt>
+          <dd className='tabular-nums'>{formatPerMillion(row.price_in)}</dd>
+        </div>
+        <div>
+          <dt className='text-muted-foreground'>{t('Output price')}</dt>
+          <dd className='tabular-nums'>{formatPerMillion(row.price_out)}</dd>
+        </div>
+        <div>
+          <dt className='text-muted-foreground'>{t('Cache read')}</dt>
+          <dd className='tabular-nums'>{formatPerMillion(row.price_cache_read)}</dd>
+        </div>
+        <div>
+          <dt className='text-muted-foreground'>{t('Cache write')}</dt>
+          <dd className='tabular-nums'>{formatPerMillion(row.price_cache_write)}</dd>
+        </div>
+      </>
+    )
+  }
+  return null
+}
+
 function inputPriceCell(row: ManualUpstreamPrice): string {
   if (row.mode === 'per_call') return formatPerCall(row.price_in)
   if (row.mode === 'per_token') return formatPerMillion(row.price_in)
@@ -266,6 +304,58 @@ export function ManualUpstreamPrices() {
     ))
   }
 
+  const mobileEmpty = (message: string) => (
+    <p className='text-muted-foreground rounded-md border px-3 py-6 text-sm'>
+      {message}
+    </p>
+  )
+
+  let mobileList: ReactNode
+  if (channelId === null) {
+    mobileList = mobileEmpty(t('Select a channel first'))
+  } else if (isLoading) {
+    mobileList = mobileEmpty(t('Loading...'))
+  } else if (rows.length === 0) {
+    mobileList = mobileEmpty(t('No manual prices for this channel'))
+  } else {
+    mobileList = rows.map((row) => (
+      <div key={row.model_name} className='rounded-md border px-3 py-2.5'>
+        <div className='flex items-start justify-between gap-2'>
+          <div className='min-w-0'>
+            <div className='truncate font-mono text-xs'>{row.model_name}</div>
+            <div className='text-muted-foreground text-[11px]'>
+              {t(MODE_LABELS[row.mode])}
+            </div>
+          </div>
+          <Button
+            size='sm'
+            variant='ghost'
+            aria-label={t('Delete')}
+            onClick={() => deleteMutation.mutate(row)}
+          >
+            <Trash2 className='h-4 w-4' />
+          </Button>
+        </div>
+
+        <dl className='mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]'>
+          {mobilePriceFields(row, t)}
+        </dl>
+
+        {row.mode === 'expr' && (
+          <div className='bg-muted mt-2 rounded px-2 py-1 font-mono text-[10px] break-all'>
+            {row.expr}
+          </div>
+        )}
+
+        {row.updated_at && (
+          <div className='text-muted-foreground mt-2 text-[10px]'>
+            {new Date(row.updated_at * 1000).toLocaleString()}
+          </div>
+        )}
+      </div>
+    ))
+  }
+
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-4'>
       <p className='text-muted-foreground text-sm'>
@@ -274,8 +364,8 @@ export function ManualUpstreamPrices() {
         )}
       </p>
 
-      {/* 第一行：渠道 + 模型 */}
-      <div className='flex flex-wrap items-end gap-3'>
+      {/* 第一行：渠道 + 模型（窄屏各占一行） */}
+      <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end'>
         <div className='flex flex-col gap-1.5'>
           <label className='text-xs font-medium' htmlFor='manual-channel'>
             {t('Channel')}
@@ -284,7 +374,7 @@ export function ManualUpstreamPrices() {
             value={channelId === null ? '' : String(channelId)}
             onValueChange={(value) => setChannelId(Number(value))}
           >
-            <SelectTrigger id='manual-channel' className='w-64'>
+            <SelectTrigger id='manual-channel' className='w-full sm:w-64'>
               <SelectValue>
                 {selectedChannel?.name ?? t('Select a channel')}
               </SelectValue>
@@ -315,7 +405,7 @@ export function ManualUpstreamPrices() {
           <Input
             id='manual-model'
             list='manual-model-options'
-            className='w-64'
+            className='w-full sm:w-64'
             placeholder='gpt-4o'
             value={modelName}
             onChange={(event) => setModelName(event.target.value)}
@@ -333,8 +423,8 @@ export function ManualUpstreamPrices() {
         )}
       </div>
 
-      {/* 第二行：计费方式 + 该方式下的价格字段 */}
-      <div className='flex flex-wrap items-end gap-3'>
+      {/* 第二行：计费方式 + 该方式下的价格字段（窄屏各占一行） */}
+      <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end'>
         <div className='flex flex-col gap-1.5'>
           <label className='text-xs font-medium' htmlFor='manual-mode'>
             {t('Price mode')}
@@ -343,7 +433,7 @@ export function ManualUpstreamPrices() {
             value={mode}
             onValueChange={(value) => setMode(value as ManualUpstreamPriceMode)}
           >
-            <SelectTrigger id='manual-mode' className='w-40'>
+            <SelectTrigger id='manual-mode' className='w-full sm:w-40'>
               <SelectValue>{t(MODE_LABELS[mode])}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -361,7 +451,7 @@ export function ManualUpstreamPrices() {
             </label>
             <Input
               id='manual-price-in'
-              className='w-44'
+              className='w-full sm:w-44'
               inputMode='decimal'
               value={priceIn}
               onChange={(event) => setPriceIn(event.target.value)}
@@ -370,14 +460,15 @@ export function ManualUpstreamPrices() {
         )}
 
         {isPerToken && (
-          <>
+          <div className='grid grid-cols-2 gap-3 sm:contents'>
+
             <div className='flex flex-col gap-1.5'>
               <label className='text-xs font-medium' htmlFor='manual-price-in'>
                 {t('Input price (USD / 1M tokens)')}
               </label>
               <Input
                 id='manual-price-in'
-                className='w-44'
+                className='w-full sm:w-44'
                 inputMode='decimal'
                 value={priceIn}
                 onChange={(event) => setPriceIn(event.target.value)}
@@ -389,7 +480,7 @@ export function ManualUpstreamPrices() {
               </label>
               <Input
                 id='manual-price-out'
-                className='w-44'
+                className='w-full sm:w-44'
                 inputMode='decimal'
                 value={priceOut}
                 onChange={(event) => setPriceOut(event.target.value)}
@@ -401,7 +492,7 @@ export function ManualUpstreamPrices() {
               </label>
               <Input
                 id='manual-price-cache-read'
-                className='w-44'
+                className='w-full sm:w-44'
                 inputMode='decimal'
                 value={priceCacheRead}
                 onChange={(event) => setPriceCacheRead(event.target.value)}
@@ -413,17 +504,17 @@ export function ManualUpstreamPrices() {
               </label>
               <Input
                 id='manual-price-cache-write'
-                className='w-44'
+                className='w-full sm:w-44'
                 inputMode='decimal'
                 value={priceCacheWrite}
                 onChange={(event) => setPriceCacheWrite(event.target.value)}
               />
             </div>
-          </>
+          </div>
         )}
 
         {isExpr && (
-          <div className='flex min-w-96 flex-1 flex-col gap-1.5'>
+          <div className='flex flex-col gap-1.5 sm:min-w-96 sm:flex-1'>
             <label className='text-xs font-medium' htmlFor='manual-expr'>
               {t('Billing expression')}
             </label>
@@ -440,13 +531,19 @@ export function ManualUpstreamPrices() {
         <Button
           onClick={handleSubmit}
           disabled={saveMutation.isPending || channelId === null}
+          className='w-full sm:w-auto'
         >
           <Plus className='mr-1 h-4 w-4' />
           {t('Add manual price')}
         </Button>
       </div>
 
-      <div className='overflow-x-auto rounded-md border'>
+      {/* 窄屏用卡片列表：9 列表格在手机上会把表头挤成竖排单字 */}
+      <div className='flex flex-col gap-2 sm:hidden'>
+        {mobileList}
+      </div>
+
+      <div className='hidden overflow-x-auto rounded-md border sm:block'>
         <table className='w-full text-sm'>
           <thead className='bg-muted/50'>
             <tr className='text-left'>
