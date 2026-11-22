@@ -14,9 +14,17 @@ import (
 
 const probeErrorCodeMaxLen = 64
 
-// probeTrafficWindowSeconds bounds how far back real traffic may be to still
-// describe a model's current usability.
-const probeTrafficWindowSeconds = 24 * 3600
+const (
+	// probeOutcomeWindowSeconds bounds how far back a unit's own real traffic
+	// still counts as its last known outcome. It matches the 7-day retention
+	// of channel_probe_results: a model that failed this morning must show
+	// that failure, not a sibling model's success from an hour ago.
+	probeOutcomeWindowSeconds = 7 * 24 * 3600
+	// probeAggregateWindowSeconds bounds the recent window the channel
+	// aggregate is computed over. Only units with no own traffic in the
+	// outcome window inherit it.
+	probeAggregateWindowSeconds = 24 * 3600
+)
 
 type probeTaskPayload struct {
 	ChannelIds []int `json:"channel_ids,omitempty"`
@@ -67,6 +75,7 @@ type probeLogRow struct {
 	Type      int
 	UseTime   int
 	Content   string
+	CreatedAt int64
 }
 
 type probeUnitKey struct {
@@ -78,6 +87,11 @@ type probeOutcome struct {
 	Success   bool
 	LatencyMs int64
 	ErrorCode string
+	// HasLatency is true only for consume-derived outcomes: an error row
+	// never carries a usable duration, and averaging its zero would fake a
+	// fast channel out of pure failures.
+	HasLatency bool
+	CreatedAt  int64
 }
 
 // probeErrorCode clips a free-form error message to the column width.
@@ -112,12 +126,18 @@ func latestProbeOutcomes(rows []probeLogRow) map[probeUnitKey]probeOutcome {
 		}
 		if row.Type == usagedomain.LogTypeConsume {
 			out[key] = probeOutcome{
-				Success:   true,
-				LatencyMs: int64(row.UseTime) * 1000,
+				Success:    true,
+				LatencyMs:  int64(row.UseTime) * 1000,
+				HasLatency: true,
+				CreatedAt:  row.CreatedAt,
 			}
 			continue
 		}
-		out[key] = probeOutcome{Success: false, ErrorCode: probeErrorCode(row.Content)}
+		out[key] = probeOutcome{
+			Success:   false,
+			ErrorCode: probeErrorCode(row.Content),
+			CreatedAt: row.CreatedAt,
+		}
 	}
 	return out
 }
@@ -160,12 +180,12 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 	result := &probeTaskResult{}
 
 	now := common.GetTimestamp()
-	cutoff := now - probeTrafficWindowSeconds
+	outcomeCutoff := now - probeOutcomeWindowSeconds
 	var rows []probeLogRow
 	if err := dbx.LogDB.Table("logs").
-		Select("channel_id, model_name, type, use_time, content").
+		Select("channel_id, model_name, type, use_time, content, created_at").
 		Where("created_at >= ? AND channel_id > 0 AND model_name <> '' AND type IN ?",
-			cutoff, []int{usagedomain.LogTypeConsume, usagedomain.LogTypeError}).
+			outcomeCutoff, []int{usagedomain.LogTypeConsume, usagedomain.LogTypeError}).
 		Order("created_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
 		return nil, err
@@ -195,26 +215,39 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 				declared[m] = struct{}{}
 			}
 		}
+		// The aggregate is a recent-window signal: a channel that served
+		// traffic within the day is alive, regardless of how stale each
+		// unit's own last outcome is.
+		aggCutoff := now - probeAggregateWindowSeconds
 		var aggRateSum, aggLatSum float64
+		var aggLatN int
 		aggN := 0
 		for _, key := range byChannel[channel.Id] {
 			if _, ok := declared[key.Model]; !ok {
 				continue
 			}
 			o := outcomes[key]
+			if o.CreatedAt < aggCutoff {
+				continue
+			}
 			rate := 0.0
 			if o.Success {
 				rate = 100
 			}
 			aggRateSum += rate
-			aggLatSum += float64(o.LatencyMs)
 			aggN++
+			if o.HasLatency {
+				aggLatSum += float64(o.LatencyMs)
+				aggLatN++
+			}
 		}
 		var chRate float64
 		var chLat int64
 		if aggN > 0 {
 			chRate = aggRateSum / float64(aggN)
-			chLat = int64(aggLatSum / float64(aggN))
+		}
+		if aggLatN > 0 {
+			chLat = int64(aggLatSum / float64(aggLatN))
 		}
 
 		seen := make(map[string]struct{}, len(channel.GetModels()))

@@ -69,3 +69,35 @@ func TestProbeErrorCodeKeepsValidUTF8(t *testing.T) {
 	assert.Equal(t, "", probeErrorCode(""))
 	assert.Equal(t, "ok", probeErrorCode("ok\xff"), "invalid bytes are dropped")
 }
+
+// TestLatestProbeOutcomesLatencyOnlyFromConsume 钉住：error 日志不带延迟，
+// 渠道聚合若把它的 0 算进去，会凭空捏造出“失败很多但平均延迟很低”的渠道。
+func TestLatestProbeOutcomesLatencyOnlyFromConsume(t *testing.T) {
+	out := latestProbeOutcomes([]probeLogRow{
+		{ChannelId: 1, ModelName: "err-unit", Type: usagedomain.LogTypeError, Content: "boom", CreatedAt: 200},
+		{ChannelId: 1, ModelName: "ok-unit", Type: usagedomain.LogTypeConsume, UseTime: 3, CreatedAt: 100},
+	})
+	errUnit := out[probeUnitKey{ChannelId: 1, Model: "err-unit"}]
+	assert.False(t, errUnit.HasLatency, "error rows carry no latency evidence")
+	assert.Zero(t, errUnit.LatencyMs)
+	okUnit := out[probeUnitKey{ChannelId: 1, Model: "ok-unit"}]
+	assert.True(t, okUnit.HasLatency)
+	assert.Equal(t, int64(3000), okUnit.LatencyMs)
+	assert.Equal(t, int64(200), errUnit.CreatedAt)
+}
+
+// TestLatestProbeOutcomesNewestWinsAcrossTypes 钉住：同单元先失败后成功
+// （重试成功）时以成功为准；先成功后失败则以失败为准。顺序即新旧。
+func TestLatestProbeOutcomesNewestWinsAcrossTypes(t *testing.T) {
+	retry := latestProbeOutcomes([]probeLogRow{
+		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeConsume, CreatedAt: 200},
+		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeError, Content: "x", CreatedAt: 100},
+	})
+	assert.True(t, retry[probeUnitKey{ChannelId: 1, Model: "m"}].Success)
+
+	degrade := latestProbeOutcomes([]probeLogRow{
+		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeError, Content: "x", CreatedAt: 200},
+		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeConsume, CreatedAt: 100},
+	})
+	assert.False(t, degrade[probeUnitKey{ChannelId: 1, Model: "m"}].Success)
+}
