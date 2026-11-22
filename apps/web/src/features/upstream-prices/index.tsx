@@ -68,7 +68,7 @@ export function UpstreamPrices() {
                     value='auto'
                     className='flex-none px-4 text-sm max-sm:px-3'
                   >
-                    {t('Auto sync')}
+                    {t('Profit comparison')}
                   </TabsTrigger>
                   <TabsTrigger
                     value='manual'

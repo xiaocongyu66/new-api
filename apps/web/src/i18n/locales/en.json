@@ -6552,7 +6552,6 @@
     "The upstream returned no content (only reasoning or an empty response).": "The upstream returned no content (only reasoning or an empty response).",
     "admin.upstreamPrices": "Upstream prices",
     "Upstream prices": "Upstream prices",
-    "Auto sync": "Auto sync",
     "Manual prices": "Manual prices",
     "Manual price saved": "Manual price saved",
     "Failed to save manual price": "Failed to save manual price",
@@ -6584,6 +6583,7 @@
     "Fluctuation alert threshold (%)": "Fluctuation alert threshold (%)",
     "Select a model": "Select a model",
     "Search model...": "Search model...",
-    "No matching model found.": "No matching model found."
+    "No matching model found.": "No matching model found.",
+    "Profit comparison": "Profit comparison"
   }
 }

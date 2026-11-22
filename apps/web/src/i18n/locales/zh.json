@@ -6557,7 +6557,6 @@
     "Saved": "已保存",
     "admin.upstreamPrices": "上游价格",
     "Upstream prices": "上游价格",
-    "Auto sync": "自动同步",
     "Manual prices": "手工价格",
     "Manual price saved": "手工价格已保存",
     "Failed to save manual price": "保存手工价格失败",
@@ -6589,6 +6588,7 @@
     "Fluctuation alert threshold (%)": "波动阈值（%）",
     "Select a model": "选择模型",
     "Search model...": "搜索模型...",
-    "No matching model found.": "没有匹配的模型"
+    "No matching model found.": "没有匹配的模型",
+    "Profit comparison": "盈利对比"
   }
 }

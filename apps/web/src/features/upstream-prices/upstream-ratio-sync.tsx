@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -157,6 +157,26 @@ export function UpstreamRatioSync() {
     days: analysisDays,
     threshold: analysisThreshold,
   })
+
+  // 滚动容器不在按钮的祖先链上：分析表格自带 overflow-auto，页签容器本身
+  // 反而没有溢出。所以从按钮所在的页签面板里把所有已滚动过的容器一起归零，
+  // 全都没有滚动时才退回 window。
+  const scrollToTop = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    const panel = event.currentTarget.closest('[data-slot="tabs-content"]')
+    let scrolled = false
+    if (panel) {
+      const nodes = [panel, ...panel.querySelectorAll<HTMLElement>('*')]
+      for (const node of nodes) {
+        if (node.scrollTop > 0) {
+          node.scrollTo({ top: 0, behavior: 'smooth' })
+          scrolled = true
+        }
+      }
+    }
+    if (!scrolled) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [])
 
   const {
     data: channelsData,
@@ -510,7 +530,7 @@ export function UpstreamRatioSync() {
           variant='secondary'
           className='rounded-full shadow-lg'
           aria-label={t('Back to top')}
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          onClick={scrollToTop}
         >
           <ArrowUp className='h-4 w-4' />
         </Button>

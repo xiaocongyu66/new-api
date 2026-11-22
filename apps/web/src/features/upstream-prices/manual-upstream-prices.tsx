@@ -26,6 +26,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { Combobox } from '@/components/ui/combobox'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -541,9 +542,10 @@ export function ManualUpstreamPrices() {
             <label className='text-xs font-medium' htmlFor='manual-expr'>
               {t('Billing expression')}
             </label>
-            <Input
+            <Textarea
               id='manual-expr'
-              className='font-mono'
+              rows={2}
+              className='min-h-16 font-mono text-xs'
               placeholder='tier("base", p * 3 + c * 15 + cr * 0.3 + cc * 3.75)'
               value={expr}
               onChange={(event) => setExpr(event.target.value)}
