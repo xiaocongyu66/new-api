@@ -225,6 +225,30 @@ func TestManualPriceFieldsShape(t *testing.T) {
 	require.NotNil(t, price)
 	// 1k input + 250 output at USD 3 / 15 per 1M.
 	assert.InDelta(t, (3*1000+15*250)/1e6, *price, 1e-12)
+
+	// Cache read/write coefficients price those token classes too, and are
+	// omitted from the expression when zero.
+	withCache := manualPriceFields(&ManualUpstreamPrice{
+		ChannelID: 7, ModelName: "claude", Mode: manualModePerToken,
+		PriceIn: 3, PriceOut: 15, PriceCacheRead: 0.3, PriceCacheWrite: 3.75,
+	})
+	cacheExpr, ok := modelExpr(withCache)
+	require.True(t, ok)
+	assert.Contains(t, cacheExpr, "cr * 0.3")
+	assert.Contains(t, cacheExpr, "cc * 3.75")
+	// 1k prompt + 250 completion + 2k cache read + 400 cache write, in USD.
+	want := (3*1000 + 15*250 + 0.3*2000 + 3.75*400) / 1e6
+	got := evalUsdWithTokens(cacheExpr, 1000, 250, 1000, 2000, 400)
+	require.NotNil(t, got)
+	assert.InDelta(t, want, *got, 1e-12)
+
+	// Expression mode stores the operator expression verbatim.
+	exprMode := manualPriceFields(&ManualUpstreamPrice{
+		ChannelID: 7, ModelName: "m", Mode: manualModeExpr,
+		Expr: `tier("base", p * 1 + c * 2)`,
+	})
+	assert.Equal(t, `tier("base", p * 1 + c * 2)`, exprMode[billing.BillingExprField])
+	assert.Equal(t, billing.BillingModeTieredExpr, exprMode[billing.BillingModeField])
 }
 
 // TestBuildChannelEntryFallsBackToManualPrice pins the precedence rule: a

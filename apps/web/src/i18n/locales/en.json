@@ -6574,6 +6574,12 @@
     "Select a channel": "Select a channel",
     "Manual prices cover upstreams that expose no /api/pricing endpoint. A fetched snapshot always wins over a manual entry.": "Manual prices cover upstreams that expose no /api/pricing endpoint. A fetched snapshot always wins over a manual entry.",
     "Updated at": "Updated at",
-    "Manual price": "Manual price"
+    "Manual price": "Manual price",
+    "Cache read": "Cache read",
+    "Cache read price (USD / 1M tokens)": "Cache read price (USD / 1M tokens)",
+    "Cache write price (USD / 1M tokens)": "Cache write price (USD / 1M tokens)",
+    "Billing expression": "Billing expression",
+    "Expression is required": "Expression is required",
+    "Prices must be non-negative numbers": "Prices must be non-negative numbers"
   }
 }

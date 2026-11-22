@@ -580,16 +580,21 @@ export type UpstreamChannel = {
   last_synced_at?: number
 }
 
-export type ManualUpstreamPriceMode = 'per_call' | 'per_token'
+export type ManualUpstreamPriceMode = 'per_call' | 'per_token' | 'expr'
 
 export type ManualUpstreamPrice = {
   id?: number
   channel_id: number
   model_name: string
   mode: ManualUpstreamPriceMode
-  // per_call: USD per request. per_token: USD per 1M input/output tokens.
+  // per_call: USD per request. per_token: USD per 1M tokens for the matching
+  // token class (input / output / cache read / cache write).
   price_in: number
   price_out: number
+  price_cache_read: number
+  price_cache_write: number
+  // expr: full billing expression, same syntax as the model pricing editor.
+  expr: string
   updated_at?: number
   updated_by?: number
 }
@@ -600,6 +605,9 @@ export type ManualUpstreamPriceUpsertRequest = {
   mode: ManualUpstreamPriceMode
   price_in: number
   price_out: number
+  price_cache_read: number
+  price_cache_write: number
+  expr: string
 }
 
 export type ManualUpstreamPriceListResponse = {

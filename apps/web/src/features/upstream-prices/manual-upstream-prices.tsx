@@ -45,24 +45,27 @@ import type {
   ManualUpstreamPriceMode,
 } from '@/features/system-settings/types'
 
-// Prices typed here are USD (per request, or per 1M tokens), matching the
-// USD/1M coefficients the pricing expression evaluator already uses.
-function parsePrice(value: string): number | null {
-  const trimmed = value.trim()
-  if (trimmed === '') return null
-  const price = Number(trimmed)
-  if (!Number.isFinite(price) || price < 0) return null
-  return price
+const MODE_LABELS: Record<ManualUpstreamPriceMode, string> = {
+  per_token: 'Per token',
+  per_call: 'Per request',
+  expr: 'Expression',
 }
 
-// USD shown as stored: per request, or per 1M tokens for the two-coefficient mode.
-function formatManualPrice(
-  row: ManualUpstreamPrice,
-  side: 'in' | 'out'
-): string {
-  const value = side === 'in' ? row.price_in : row.price_out
-  const unit = row.mode === 'per_token' ? '/1M' : '/req'
-  return `$${value} ${unit}`
+// USD per 1M tokens for per-token rows, USD per request for per-call rows.
+function formatPerMillion(value: number): string {
+  return `$${value} /1M`
+}
+
+function formatPerCall(value: number): string {
+  return `$${value} /req`
+}
+
+// 输入价格列按计费方式换单位：按次是美元/次，按量是美元/百万 tokens，
+// 表达式模式没有单列价格。
+function inputPriceCell(row: ManualUpstreamPrice): string {
+  if (row.mode === 'per_call') return formatPerCall(row.price_in)
+  if (row.mode === 'per_token') return formatPerMillion(row.price_in)
+  return '—'
 }
 
 export function ManualUpstreamPrices() {
@@ -73,6 +76,9 @@ export function ManualUpstreamPrices() {
   const [mode, setMode] = useState<ManualUpstreamPriceMode>('per_token')
   const [priceIn, setPriceIn] = useState('')
   const [priceOut, setPriceOut] = useState('')
+  const [priceCacheRead, setPriceCacheRead] = useState('')
+  const [priceCacheWrite, setPriceCacheWrite] = useState('')
+  const [expr, setExpr] = useState('')
 
   const { data: channelsData } = useQuery({
     queryKey: ['upstream-channels'],
@@ -117,6 +123,9 @@ export function ManualUpstreamPrices() {
         setModelName('')
         setPriceIn('')
         setPriceOut('')
+        setPriceCacheRead('')
+        setPriceCacheWrite('')
+        setExpr('')
         invalidate()
       } else {
         toast.error(data.message || t('Failed to save manual price'))
@@ -141,6 +150,15 @@ export function ManualUpstreamPrices() {
 
   const selectedChannel = channels.find((channel) => channel.id === channelId)
   const isPerToken = mode === 'per_token'
+  const isPerCall = mode === 'per_call'
+  const isExpr = mode === 'expr'
+
+  // Optional USD/1M coefficient: blank means "not charged for this class".
+  const optionalPrice = (value: string): number | null => {
+    if (value.trim() === '') return 0
+    const parsed = Number(value)
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+  }
 
   const handleSubmit = () => {
     const name = modelName.trim()
@@ -152,14 +170,34 @@ export function ManualUpstreamPrices() {
       toast.error(t('Model name is required'))
       return
     }
-    const input = parsePrice(priceIn)
-    if (input === null) {
-      toast.error(t(isPerToken ? 'Input price is required' : 'Price is required'))
+    if (isExpr) {
+      if (expr.trim() === '') {
+        toast.error(t('Expression is required'))
+        return
+      }
+      saveMutation.mutate({
+        channel_id: channelId,
+        model_name: name,
+        mode,
+        price_in: 0,
+        price_out: 0,
+        price_cache_read: 0,
+        price_cache_write: 0,
+        expr: expr.trim(),
+      })
       return
     }
-    const output = isPerToken ? parsePrice(priceOut) : 0
-    if (output === null) {
-      toast.error(t('Output price is required'))
+
+    const input = optionalPrice(priceIn)
+    if (input === null || (isPerCall && priceIn.trim() === '')) {
+      toast.error(t(isPerCall ? 'Price is required' : 'Input price is required'))
+      return
+    }
+    const output = isPerToken ? optionalPrice(priceOut) : 0
+    const cacheRead = isPerToken ? optionalPrice(priceCacheRead) : 0
+    const cacheWrite = isPerToken ? optionalPrice(priceCacheWrite) : 0
+    if (output === null || cacheRead === null || cacheWrite === null) {
+      toast.error(t('Prices must be non-negative numbers'))
       return
     }
     saveMutation.mutate({
@@ -168,6 +206,9 @@ export function ManualUpstreamPrices() {
       mode,
       price_in: input,
       price_out: output,
+      price_cache_read: cacheRead,
+      price_cache_write: cacheWrite,
+      expr: '',
     })
   }
 
@@ -175,7 +216,7 @@ export function ManualUpstreamPrices() {
   // four mutually exclusive states read badly as `a ? x : b ? y : c ? z : w`.
   const emptyRow = (message: string) => (
     <tr>
-      <td className='text-muted-foreground px-3 py-6' colSpan={6}>
+      <td className='text-muted-foreground px-3 py-6' colSpan={9}>
         {message}
       </td>
     </tr>
@@ -192,14 +233,19 @@ export function ManualUpstreamPrices() {
     body = rows.map((row) => (
       <tr key={row.model_name} className='border-t'>
         <td className='px-3 py-2 font-mono text-xs'>{row.model_name}</td>
+        <td className='px-3 py-2'>{t(MODE_LABELS[row.mode])}</td>
+        <td className='px-3 py-2'>{inputPriceCell(row)}</td>
         <td className='px-3 py-2'>
-          {row.mode === 'per_token' ? t('Per token') : t('Per request')}
+          {row.mode === 'per_token' ? formatPerMillion(row.price_out) : '—'}
         </td>
         <td className='px-3 py-2'>
-          {formatManualPrice(row, 'in')}
+          {row.mode === 'per_token' ? formatPerMillion(row.price_cache_read) : '—'}
         </td>
         <td className='px-3 py-2'>
-          {row.mode === 'per_token' ? formatManualPrice(row, 'out') : '—'}
+          {row.mode === 'per_token' ? formatPerMillion(row.price_cache_write) : '—'}
+        </td>
+        <td className='text-muted-foreground max-w-64 truncate px-3 py-2 font-mono text-xs' title={row.expr}>
+          {row.mode === 'expr' ? row.expr : '—'}
         </td>
         <td className='text-muted-foreground px-3 py-2 text-xs'>
           {row.updated_at
@@ -228,8 +274,9 @@ export function ManualUpstreamPrices() {
         )}
       </p>
 
+      {/* 第一行：渠道 + 模型 */}
       <div className='flex flex-wrap items-end gap-3'>
-        <div className='flex min-w-56 flex-col gap-1.5'>
+        <div className='flex flex-col gap-1.5'>
           <label className='text-xs font-medium' htmlFor='manual-channel'>
             {t('Channel')}
           </label>
@@ -261,14 +308,6 @@ export function ManualUpstreamPrices() {
             </SelectContent>
           </Select>
         </div>
-        {selectedChannel?.last_sync_status === 'error' && (
-          <span className='text-muted-foreground max-w-md text-xs'>
-            {selectedChannel.last_sync_error}
-          </span>
-        )}
-      </div>
-
-      <div className='flex flex-wrap items-end gap-3'>
         <div className='flex flex-col gap-1.5'>
           <label className='text-xs font-medium' htmlFor='manual-model'>
             {t('Model')}
@@ -287,6 +326,15 @@ export function ManualUpstreamPrices() {
             ))}
           </datalist>
         </div>
+        {selectedChannel?.last_sync_status === 'error' && (
+          <span className='text-muted-foreground max-w-md pb-2 text-xs'>
+            {selectedChannel.last_sync_error}
+          </span>
+        )}
+      </div>
+
+      {/* 第二行：计费方式 + 该方式下的价格字段 */}
+      <div className='flex flex-wrap items-end gap-3'>
         <div className='flex flex-col gap-1.5'>
           <label className='text-xs font-medium' htmlFor='manual-mode'>
             {t('Price mode')}
@@ -296,44 +344,99 @@ export function ManualUpstreamPrices() {
             onValueChange={(value) => setMode(value as ManualUpstreamPriceMode)}
           >
             <SelectTrigger id='manual-mode' className='w-40'>
-              <SelectValue>
-                {isPerToken ? t('Per token') : t('Per request')}
-              </SelectValue>
+              <SelectValue>{t(MODE_LABELS[mode])}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value='per_token'>{t('Per token')}</SelectItem>
               <SelectItem value='per_call'>{t('Per request')}</SelectItem>
+              <SelectItem value='expr'>{t('Expression')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
-        <div className='flex flex-col gap-1.5'>
-          <label className='text-xs font-medium' htmlFor='manual-price-in'>
-            {isPerToken
-              ? t('Input price (USD / 1M tokens)')
-              : t('Price (USD / request)')}
-          </label>
-          <Input
-            id='manual-price-in'
-            className='w-44'
-            inputMode='decimal'
-            value={priceIn}
-            onChange={(event) => setPriceIn(event.target.value)}
-          />
-        </div>
-        {isPerToken && (
+
+        {isPerCall && (
           <div className='flex flex-col gap-1.5'>
-            <label className='text-xs font-medium' htmlFor='manual-price-out'>
-              {t('Output price (USD / 1M tokens)')}
+            <label className='text-xs font-medium' htmlFor='manual-price-in'>
+              {t('Price (USD / request)')}
             </label>
             <Input
-              id='manual-price-out'
+              id='manual-price-in'
               className='w-44'
               inputMode='decimal'
-              value={priceOut}
-              onChange={(event) => setPriceOut(event.target.value)}
+              value={priceIn}
+              onChange={(event) => setPriceIn(event.target.value)}
             />
           </div>
         )}
+
+        {isPerToken && (
+          <>
+            <div className='flex flex-col gap-1.5'>
+              <label className='text-xs font-medium' htmlFor='manual-price-in'>
+                {t('Input price (USD / 1M tokens)')}
+              </label>
+              <Input
+                id='manual-price-in'
+                className='w-44'
+                inputMode='decimal'
+                value={priceIn}
+                onChange={(event) => setPriceIn(event.target.value)}
+              />
+            </div>
+            <div className='flex flex-col gap-1.5'>
+              <label className='text-xs font-medium' htmlFor='manual-price-out'>
+                {t('Output price (USD / 1M tokens)')}
+              </label>
+              <Input
+                id='manual-price-out'
+                className='w-44'
+                inputMode='decimal'
+                value={priceOut}
+                onChange={(event) => setPriceOut(event.target.value)}
+              />
+            </div>
+            <div className='flex flex-col gap-1.5'>
+              <label className='text-xs font-medium' htmlFor='manual-price-cache-read'>
+                {t('Cache read price (USD / 1M tokens)')}
+              </label>
+              <Input
+                id='manual-price-cache-read'
+                className='w-44'
+                inputMode='decimal'
+                value={priceCacheRead}
+                onChange={(event) => setPriceCacheRead(event.target.value)}
+              />
+            </div>
+            <div className='flex flex-col gap-1.5'>
+              <label className='text-xs font-medium' htmlFor='manual-price-cache-write'>
+                {t('Cache write price (USD / 1M tokens)')}
+              </label>
+              <Input
+                id='manual-price-cache-write'
+                className='w-44'
+                inputMode='decimal'
+                value={priceCacheWrite}
+                onChange={(event) => setPriceCacheWrite(event.target.value)}
+              />
+            </div>
+          </>
+        )}
+
+        {isExpr && (
+          <div className='flex min-w-96 flex-1 flex-col gap-1.5'>
+            <label className='text-xs font-medium' htmlFor='manual-expr'>
+              {t('Billing expression')}
+            </label>
+            <Input
+              id='manual-expr'
+              className='font-mono'
+              placeholder='tier("base", p * 3 + c * 15 + cr * 0.3 + cc * 3.75)'
+              value={expr}
+              onChange={(event) => setExpr(event.target.value)}
+            />
+          </div>
+        )}
+
         <Button
           onClick={handleSubmit}
           disabled={saveMutation.isPending || channelId === null}
@@ -351,13 +454,14 @@ export function ManualUpstreamPrices() {
               <th className='px-3 py-2 font-medium'>{t('Price mode')}</th>
               <th className='px-3 py-2 font-medium'>{t('Input price')}</th>
               <th className='px-3 py-2 font-medium'>{t('Output price')}</th>
+              <th className='px-3 py-2 font-medium'>{t('Cache read')}</th>
+              <th className='px-3 py-2 font-medium'>{t('Cache write')}</th>
+              <th className='px-3 py-2 font-medium'>{t('Expression')}</th>
               <th className='px-3 py-2 font-medium'>{t('Updated at')}</th>
               <th className='px-3 py-2 font-medium' />
             </tr>
           </thead>
-          <tbody>
-            {body}
-          </tbody>
+          <tbody>{body}</tbody>
         </table>
       </div>
     </div>

@@ -317,7 +317,7 @@ func aggregateChannelLogs(expr string, tier map[[3]any][]pricingSample, channelI
 	for _, w := range windows {
 		for _, s := range tier[[3]any{int64(channelID), modelName, w}] {
 			found = true
-			if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen); usd != nil {
+			if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen, s.CacheRead, s.CacheWrite); usd != nil {
 				st.Cost += *usd
 			}
 			if s.BillingSource == billingSourceSubscription {
@@ -589,7 +589,7 @@ func windowCostUSD(expr string, samples []pricingSample) float64 {
 	}
 	var total float64
 	for _, s := range samples {
-		if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen); usd != nil {
+		if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen, s.CacheRead, s.CacheWrite); usd != nil {
 			total += *usd
 		}
 	}
@@ -810,7 +810,9 @@ func tieredExpr(mode, expr, ctxTier, ctxTierPerCall string) (string, bool) {
 // evalUsd evaluates an expression at a context window and returns USD
 // (raw output is $/1M tokens, so divide by 1e6). Nil on missing/failed eval.
 func evalUsd(expr string, ctx int) *float64 {
-	return evalUsdWithTokens(expr, ctx, ctx/4, ctx)
+	// Representative request has no cache traffic; cache-aware upstream prices
+	// then quote the plain input/output part of the expression.
+	return evalUsdWithTokens(expr, ctx, ctx/4, ctx, 0, 0)
 }
 
 // evalUsdWithTokens evaluates an expression with exact per-request token counts.
@@ -818,7 +820,7 @@ func evalUsd(expr string, ctx int) *float64 {
 // (BuildTieredTokenParams: prompt tokens, plus cache tokens on Claude-format
 // responses); pricing a log with plain prompt tokens would pick the wrong
 // per-call tier whenever cache tokens push the context over a boundary.
-func evalUsdWithTokens(expr string, prompt, completion, inputLen int) *float64 {
+func evalUsdWithTokens(expr string, prompt, completion, inputLen int, cacheRead, cacheWrite int) *float64 {
 	if expr == "" {
 		return nil
 	}
@@ -826,6 +828,8 @@ func evalUsdWithTokens(expr string, prompt, completion, inputLen int) *float64 {
 		P:   float64(prompt),
 		C:   float64(completion),
 		Len: float64(inputLen),
+		CR:  float64(cacheRead),
+		CC:  float64(cacheWrite),
 	})
 	if err != nil {
 		return nil
@@ -1221,6 +1225,8 @@ type pricingSample struct {
 	// InputLen is the total input context settlement priced this log against
 	// (Claude-format responses add cache tokens to prompt_tokens).
 	InputLen      int
+	CacheRead     int
+	CacheWrite    int
 	Quota         int64
 	GroupRatio    float64
 	BillingSource string
@@ -1270,11 +1276,22 @@ func tierUsageByWindow(modelNames []string, windows []int, start, end int64) map
 			if v, ok := meta["input_tokens_total"].(float64); ok && int(v) > 0 {
 				inputLen = int(v)
 			}
+			// Cache hit/write tokens let cache-aware expressions price each log
+			// exactly; logs without the fields simply price them at zero.
+			cacheRead, cacheWrite := 0, 0
+			if v, ok := meta["cache_tokens"].(float64); ok {
+				cacheRead = int(v)
+			}
+			if v, ok := meta["cache_write_tokens"].(float64); ok {
+				cacheWrite = int(v)
+			}
 			key := [3]any{r.ChannelID, r.ModelName, windows[sampleBucket(inputLen, windows)]}
 			out[key] = append(out[key], pricingSample{
 				Prompt:        r.PromptTokens,
 				Completion:    r.CompletionTokens,
 				InputLen:      inputLen,
+				CacheRead:     cacheRead,
+				CacheWrite:    cacheWrite,
 				Quota:         r.Quota,
 				GroupRatio:    groupRatio,
 				BillingSource: billingSource,

@@ -6579,6 +6579,12 @@
     "Select a channel": "選擇渠道",
     "Manual prices cover upstreams that expose no /api/pricing endpoint. A fetched snapshot always wins over a manual entry.": "手工價格用於沒有 /api/pricing 介面的上游；一旦拉取到快照，快照優先於手工價格。",
     "Updated at": "更新時間",
-    "Manual price": "手工價格"
+    "Manual price": "手工價格",
+    "Cache read": "緩存讀取",
+    "Cache read price (USD / 1M tokens)": "快取讀價格（美元 / 百萬 tokens）",
+    "Cache write price (USD / 1M tokens)": "快取寫價格（美元 / 百萬 tokens）",
+    "Billing expression": "計費表達式",
+    "Expression is required": "請填寫表達式",
+    "Prices must be non-negative numbers": "價格必須是非負數"
   }
 }
