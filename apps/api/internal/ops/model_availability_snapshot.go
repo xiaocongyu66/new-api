@@ -113,6 +113,36 @@ func trimModelAvailability() {
 	}
 }
 
+// staticWeightsByUnit sums static_weight across key_index rows for each
+// (channel, public_model_alias), matching LoadUpstreamHealth. A configured
+// zero-weight route keeps weight 1 (routingBaseWeight(0)==1), so it is not
+// silently dropped from a weighted mean; only a missing row gets 0, which
+// makes WeightedRate fall back to a plain mean.
+func staticWeightsByUnit(ctx context.Context) (map[unitKey]float64, error) {
+	var rows []struct {
+		ChannelId   int
+		PublicModel string
+		SumWeight   float64
+		RowCount    int64
+	}
+	if err := dbx.DB.WithContext(ctx).Table("channel_model_routes AS r").
+		Select("r.channel_id, r.public_model_alias AS public_model, SUM(r.static_weight) AS sum_weight, COUNT(*) AS row_count").
+		Where("r.enabled = ?", true).
+		Group("r.channel_id, r.public_model_alias").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[unitKey]float64, len(rows))
+	for _, r := range rows {
+		w := r.SumWeight
+		if r.RowCount > 0 && w == 0 {
+			w = 1 // an explicitly configured zero-weight route is still selectable
+		}
+		out[unitKey{r.ChannelId, r.PublicModel}] = w
+	}
+	return out, nil
+}
+
 // LoadAvailabilitySnapshotsAsHealth turns the newest snapshot per
 // (channel, model) into upstream-health points. Every unit on a serving
 // channel is returned — including models that never saw traffic, which
@@ -126,6 +156,11 @@ func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHea
 		Where("created_at >= ?", cutoff).
 		Order("model ASC, created_at DESC, id DESC").
 		Find(&snaps).Error; err != nil {
+		return nil, err
+	}
+
+	weights, err := staticWeightsByUnit(ctx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -143,6 +178,7 @@ func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHea
 			Rate:       snap.Rate,
 			LatencyMs:  snap.LatencyMs,
 			ObservedAt: snap.CreatedAt,
+			Weight:     weights[key],
 		})
 	}
 	return points, nil
@@ -173,122 +209,85 @@ func LoadAvailabilityProbeBuckets(ctx context.Context, startTs, endTs, bucketSec
 		return nil, nil
 	}
 
-	// Static route weight per (channel, public alias). Weight 0 = no route
-	// configured; those units fall back to a plain mean instead of vanishing.
-	type weightKey struct {
-		channelId int
-		model     string
-	}
-	var routes []struct {
-		ChannelId    int
-		PublicModel  string
-		StaticWeight float64
-	}
-	if err := dbx.DB.WithContext(ctx).Table("channel_model_routes AS r").
-		Select("r.channel_id, r.public_model_alias AS public_model, r.static_weight").
-		Where("r.enabled = ?", true).
-		Find(&routes).Error; err != nil {
+	weights, err := staticWeightsByUnit(ctx)
+	if err != nil {
 		return nil, err
 	}
-	weights := make(map[weightKey]float64, len(routes))
-	for _, r := range routes {
-		weights[weightKey{r.ChannelId, r.PublicModel}] = r.StaticWeight
-	}
 
-	// Aggregate per (model, hour, channel) first: the newest snapshot of a
-	// unit in that hour wins (a probe run refreshes the unit's state).
-	type cellKey struct {
-		model     string
-		ts        int64
-		channelId int
-	}
+	// Group snapshots by (model, hour) in ONE pass. Within (model, hour,
+	// channel) the LAST row wins (ASC order = newest last).
 	type cell struct {
 		rate      float64
 		latencyMs int64
 	}
-	cells := make(map[cellKey]cell)
-	order := make([]struct {
+	type cellKey struct {
+		model     string
+		channelId int
+	}
+	type modelHour struct {
 		model string
 		ts    int64
-	}, 0)
-	seenUnits := make(map[cellKey]struct{})
+	}
+	cells := make(map[modelHour]map[cellKey]cell)
+	order := make([]modelHour, 0)
+	seenHour := make(map[modelHour]struct{})
 	for _, snap := range snaps {
-		key := cellKey{snap.Model, snap.CreatedAt - snap.CreatedAt%bucketSeconds, snap.ChannelId}
-		if _, ok := seenUnits[key]; ok {
-			continue // snapshots arrive oldest-first; the last one in the hour wins
+		mh := modelHour{snap.Model, snap.CreatedAt - snap.CreatedAt%bucketSeconds}
+		if _, ok := seenHour[mh]; !ok {
+			seenHour[mh] = struct{}{}
+			order = append(order, mh)
 		}
-		seenUnits[key] = struct{}{}
-		cells[key] = cell{rate: snap.Rate, latencyMs: snap.LatencyMs}
-		modelHour := struct {
-			model string
-			ts    int64
-		}{snap.Model, key.ts}
-		seenOrder := false
-		for _, o := range order {
-			if o == modelHour {
-				seenOrder = true
-				break
-			}
+		if cells[mh] == nil {
+			cells[mh] = make(map[cellKey]cell)
 		}
-		if !seenOrder {
-			order = append(order, modelHour)
+		cells[mh][cellKey{snap.Model, snap.ChannelId}] = cell{
+			rate: snap.Rate, latencyMs: snap.LatencyMs,
 		}
 	}
 
 	out := make([]usage.ProbeBucket, 0, len(order))
 	for _, mh := range order {
-		var wSum, weightedRate, weightedLat float64
-		latCount := 0
-		for key, c := range cells {
-			if key.model != mh.model || key.ts != mh.ts {
-				continue
-			}
-			w := weights[weightKey{key.channelId, key.model}]
+		var wSum, weightedRate, weightedLat, latWeight float64
+		var plainRate, plainLat float64
+		latCount, plainCount := 0, 0
+		for key, c := range cells[mh] {
+			w := weights[unitKey{key.channelId, key.model}]
 			wSum += w
 			weightedRate += c.rate * w
-			weightedLat += float64(c.latencyMs) * w
+			plainRate += c.rate
+			plainCount++
 			if c.latencyMs > 0 {
+				weightedLat += float64(c.latencyMs) * w
+				latWeight += w
+				plainLat += float64(c.latencyMs)
 				latCount++
 			}
 		}
 		var rate, latency float64
 		if wSum > 0 {
 			rate = weightedRate / wSum
-			if latCount > 0 {
-				latency = weightedLat / wSum
+			if latWeight > 0 {
+				latency = weightedLat / latWeight
 			}
 		} else {
-			// No channel in this hour has a configured weight: plain mean.
-			count := 0
-			for key, c := range cells {
-				if key.model != mh.model || key.ts != mh.ts {
-					continue
-				}
-				rate += c.rate
-				if c.latencyMs > 0 {
-					latency += float64(c.latencyMs)
-				}
-				count++
-			}
-			if count > 0 {
-				rate /= float64(count)
+			// No channel has a configured weight: plain mean.
+			if plainCount > 0 {
+				rate = plainRate / float64(plainCount)
 			}
 			if latCount > 0 {
-				latency /= float64(latCount)
+				latency = plainLat / float64(latCount)
 			}
 		}
-		// Encode the weighted ratio into counts: SuccessCount/TotalCount reads
-		// back as the weighted rate. Latency is carried directly to avoid
-		// overflowing TotalLatencyMs with a scaled weighted mean.
+		// Encode the weighted ratio into SuccessCount/TotalCount so the reader
+		// gets a plain ratio; latency is carried directly (no overflow).
 		const scale = 1_000_000
-		bucket := usage.ProbeBucket{
+		out = append(out, usage.ProbeBucket{
 			Model:        mh.model,
 			BucketTs:     mh.ts,
 			TotalCount:   scale,
 			SuccessCount: int64(math.Round(rate / 100 * scale)),
 			AvgLatencyMs: int64(math.Round(latency)),
-		}
-		out = append(out, bucket)
+		})
 	}
 	return out, nil
 }

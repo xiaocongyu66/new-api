@@ -178,23 +178,22 @@ func TestRecentSeriesProbeHoursShowVariation(t *testing.T) {
 		byTs[point.Ts] = point
 	}
 
-	// Locate by absolute hour: recentSeries re-derives its own anchor, so an
-	// hour boundary crossing between fixture and call must not break ordering
-	// assumptions.
-	if p, ok := byTs[failTs]; ok {
-		assert.Equal(t, "upstream", p.Source, "probe hours surface as upstream evidence")
-		require.NotNil(t, p.SuccessRate)
-		assert.InDelta(t, 0, *p.SuccessRate, 0.001)
-		assert.Nil(t, p.LatencyMs, "outcomes without latency stay a gap")
-	}
+	// Assert by relative position from the oldest point in the returned series
+	// so an hour-boundary crossing between fixture and call cannot skip checks.
+	require.NotEmpty(t, points)
+	base := points[0].Ts
+	okAt := base + step
 
-	p, ok := byTs[okTs]
-	require.True(t, ok, "the successful probe hour must be in the series")
-	assert.Equal(t, "upstream", p.Source)
-	require.NotNil(t, p.SuccessRate)
-	assert.InDelta(t, 100, *p.SuccessRate, 0.001)
-	require.NotNil(t, p.LatencyMs)
-	assert.Equal(t, int64(300), *p.LatencyMs, "AvgLatencyMs is the weighted mean already")
+	failPoint := byTs[base]
+	require.NotNil(t, failPoint.SuccessRate, "the failing probe hour must carry a rate")
+	assert.InDelta(t, 0, *failPoint.SuccessRate, 0.001)
+	assert.Nil(t, failPoint.LatencyMs, "outcomes without latency stay a gap")
+
+	okPoint := byTs[okAt]
+	require.NotNil(t, okPoint.SuccessRate)
+	assert.InDelta(t, 100, *okPoint.SuccessRate, 0.001)
+	require.NotNil(t, okPoint.LatencyMs)
+	assert.Equal(t, int64(300), *okPoint.LatencyMs, "AvgLatencyMs is the weighted mean already")
 }
 
 // TestRecentSeriesBlendsRequestAndProbePerHour 钉住用户要求的核心口径：

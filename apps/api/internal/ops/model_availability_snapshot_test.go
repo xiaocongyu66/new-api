@@ -61,6 +61,23 @@ func TestLoadAvailabilitySnapshotsAsHealthUsesPublicAlias(t *testing.T) {
 	assert.InDelta(t, 62.5, points[0].Rate, 0.001)
 }
 
+func TestLoadAvailabilitySnapshotsAsHealthCarriesStaticWeight(t *testing.T) {
+	withAvailabilityDB(t)
+	now := common.GetTimestamp()
+
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
+		Id: 15, PublicModelAlias: "m", ChannelId: 3, KeyIndex: 0,
+		UpstreamModel: "m-upstream", StaticWeight: 7, Enabled: true,
+	}).Error)
+	snapshotRow(t, "m", 3, 60, now-60)
+
+	points, err := LoadAvailabilitySnapshotsAsHealth(t.Context())
+	require.NoError(t, err)
+	require.Len(t, points, 1)
+	assert.Equal(t, float64(7), points[0].Weight,
+		"snapshot health points must carry the route's static weight so WeightedRate uses it")
+}
+
 func TestLoadAvailabilitySnapshotsAsHealthKeepsUnroutedChannel(t *testing.T) {
 	withAvailabilityDB(t)
 	now := common.GetTimestamp()
@@ -158,4 +175,37 @@ func TestLoadAvailabilityProbeBucketsWeightedByStaticRoute(t *testing.T) {
 	assert.Equal(t, int64(25), int64(float64(buckets[0].SuccessCount)/float64(buckets[0].TotalCount)*100))
 	// Weighted latency = (200*1 + 600*3)/4 = 500.
 	assert.Equal(t, int64(500), buckets[0].AvgLatencyMs)
+}
+
+// Fix 回归：加权延迟只除以「有延迟样本渠道」的权重和，不能把无延迟
+// （error / 继承）渠道的权重也算进分母，否则成功 200ms + 失败无延迟
+// 会算出 50ms 这种凭空捏造的低延迟。
+func TestLoadAvailabilityProbeBucketsLatencyIgnoresWeightlessSamples(t *testing.T) {
+	withAvailabilityDB(t)
+	now := common.GetTimestamp()
+	hour := now - now%3600
+
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
+		Id: 11, PublicModelAlias: "m", ChannelId: 1, KeyIndex: 0,
+		UpstreamModel: "m", StaticWeight: 1, Enabled: true,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
+		Id: 12, PublicModelAlias: "m", ChannelId: 2, KeyIndex: 0,
+		UpstreamModel: "m", StaticWeight: 3, Enabled: true,
+	}).Error)
+	// Channel 1 succeeded at 200ms; channel 2 failed (no latency evidence).
+	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
+		Model: "m", ChannelId: 1, Success: true, Rate: 100,
+		LatencyMs: 200, Source: "request", CreatedAt: hour + 60,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
+		Model: "m", ChannelId: 2, Success: false, Rate: 0,
+		LatencyMs: 0, Source: "request", CreatedAt: hour + 120,
+	}).Error)
+
+	buckets, err := LoadAvailabilityProbeBuckets(t.Context(), hour, hour+3600, 3600)
+	require.NoError(t, err)
+	require.Len(t, buckets, 1)
+	assert.Equal(t, int64(25), int64(float64(buckets[0].SuccessCount)/float64(buckets[0].TotalCount)*100))
+	assert.Equal(t, int64(200), buckets[0].AvgLatencyMs, "latency must use only the weight of channels that had latency")
 }

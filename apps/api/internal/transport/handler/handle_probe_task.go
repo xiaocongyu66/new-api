@@ -219,8 +219,7 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 		// traffic within the day is alive, regardless of how stale each
 		// unit's own last outcome is.
 		aggCutoff := now - probeAggregateWindowSeconds
-		var aggRateSum, aggLatSum float64
-		var aggLatN int
+		var aggRateSum float64
 		aggN := 0
 		for _, key := range byChannel[channel.Id] {
 			if _, ok := declared[key.Model]; !ok {
@@ -236,18 +235,10 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 			}
 			aggRateSum += rate
 			aggN++
-			if o.HasLatency {
-				aggLatSum += float64(o.LatencyMs)
-				aggLatN++
-			}
 		}
 		var chRate float64
-		var chLat int64
 		if aggN > 0 {
 			chRate = aggRateSum / float64(aggN)
-		}
-		if aggLatN > 0 {
-			chLat = int64(aggLatSum / float64(aggLatN))
 		}
 
 		seen := make(map[string]struct{}, len(channel.GetModels()))
@@ -280,7 +271,10 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 				source = "request"
 			} else if aggN > 0 {
 				success = chRate >= 50
-				latencyMs = chLat
+				// Keep the channel's aggregate rate, but NOT its latency: this
+				// model never served a request, so a sibling's latency is not
+				// its own measurement. Zero latency means "no evidence".
+				latencyMs = 0
 				rate = chRate
 			} else {
 				// The channel carried no traffic in the window at all: no
@@ -294,13 +288,20 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 			// models' results disable a model that never ran. Inherited units
 			// are recorded in the snapshot table only.
 			if source == "request" {
+				// Stamp the row with the time the outcome was actually observed.
+				// The outcome window is 7 days; writing "now" would make a
+				// week-old failure look fresh to the 24h auto-disable evaluator.
+				observedAt := now
+				if o, ok := outcomes[probeUnitKey{ChannelId: channel.Id, Model: model}]; ok && o.CreatedAt > 0 {
+					observedAt = o.CreatedAt
+				}
 				if err := dbx.DB.Create(&ops.ChannelProbeResult{
 					ChannelId: channel.Id,
 					Model:     model,
 					Success:   success,
 					LatencyMs: latencyMs,
 					ErrorCode: errorCode,
-					CreatedAt: now,
+					CreatedAt: observedAt,
 				}).Error; err != nil {
 					common.SysError("probe result persist failed: " + err.Error())
 				}

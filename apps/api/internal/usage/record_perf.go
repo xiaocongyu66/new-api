@@ -477,7 +477,7 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 		total := probeTotals[probe.Model]
 		total.TotalCount += probe.TotalCount
 		total.SuccessCount += probe.SuccessCount
-		total.TotalLatencyMs += probe.TotalLatencyMs
+		total.TotalLatencyMs += probe.AvgLatencyMs * probe.TotalCount
 		probeTotals[probe.Model] = total
 	}
 
@@ -551,7 +551,7 @@ func QuerySummaryAll(hours int, groups []string, probeBuckets []ProbeBucket, ups
 				successRate = probeRate
 				source = "probe"
 			}
-			if probe.TotalLatencyMs > 0 {
+			if probe.TotalLatencyMs > 0 && probe.TotalCount > 0 {
 				lat := probe.TotalLatencyMs / probe.TotalCount
 				avgLatency = &lat
 			}
@@ -752,9 +752,10 @@ func recentSeries(buckets map[int64]counters, probes map[int64]ProbeBucket, upst
 				probeLatency = &lat
 			}
 		}
-		// Fall back to the window-wide upstream snapshot when this hour has no
-		// probe bucket; it is the best available estimate for that hour.
-		if probeRate == nil && upstreamRate != nil {
+		// Fall back to the window-wide upstream snapshot only when the hour has
+		// NO measurement at all. Blending it into an hour that already has real
+		// requests would dilute a measured value with a window-wide estimate.
+		if realRate == nil && probeRate == nil && upstreamRate != nil {
 			r := math.Round(*upstreamRate*100) / 100
 			probeRate = &r
 			probeLatency = upstreamLatency
