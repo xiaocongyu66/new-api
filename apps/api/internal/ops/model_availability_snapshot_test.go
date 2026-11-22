@@ -124,3 +124,38 @@ func TestTrimAvailabilityExpiresTTL(t *testing.T) {
 		Distinct().Pluck("model", &names).Error)
 	assert.Equal(t, []string{"fresh"}, names)
 }
+
+// TestLoadAvailabilityProbeBucketsWeightedByStaticRoute 钉住用户要求的核心：
+// 同一模型同一小时、来自多个渠道的探活结果，按静态路由权重加权合成一个
+// 小时点（Σrate×weight/Σweight），而不是简单平均、也不是平铺最新值。
+func TestLoadAvailabilityProbeBucketsWeightedByStaticRoute(t *testing.T) {
+	withAvailabilityDB(t)
+	now := common.GetTimestamp()
+	hour := now - now%3600
+
+	// Channel 1 weight 1, success 100%; channel 2 weight 3, success 0%.
+	// Weighted rate = (100*1 + 0*3) / 4 = 25, not the plain mean 50.
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
+		Id: 1, PublicModelAlias: "m", ChannelId: 1, KeyIndex: 0,
+		UpstreamModel: "m", StaticWeight: 1, Enabled: true,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
+		Id: 2, PublicModelAlias: "m", ChannelId: 2, KeyIndex: 0,
+		UpstreamModel: "m", StaticWeight: 3, Enabled: true,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
+		Model: "m", ChannelId: 1, Success: true, Rate: 100,
+		LatencyMs: 200, Source: "request", CreatedAt: hour + 60,
+	}).Error)
+	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
+		Model: "m", ChannelId: 2, Success: false, Rate: 0,
+		LatencyMs: 600, Source: "request", CreatedAt: hour + 120,
+	}).Error)
+
+	buckets, err := LoadAvailabilityProbeBuckets(t.Context(), hour, hour+3600, 3600)
+	require.NoError(t, err)
+	require.Len(t, buckets, 1)
+	assert.Equal(t, int64(25), int64(float64(buckets[0].SuccessCount)/float64(buckets[0].TotalCount)*100))
+	// Weighted latency = (200*1 + 600*3)/4 = 500.
+	assert.Equal(t, int64(500), buckets[0].AvgLatencyMs)
+}

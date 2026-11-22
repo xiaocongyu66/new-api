@@ -84,6 +84,15 @@ type ProbeBucket struct {
 	TotalCount     int64
 	SuccessCount   int64
 	TotalLatencyMs int64
+	// AvgLatencyMs is the latency averaged over the observations that carried
+	// one, already combined by static route weight across channels. Kept as a
+	// direct field so the weighted mean never needs to be smuggled through
+	// TotalLatencyMs (which would overflow for large latencies).
+	AvgLatencyMs int64
+	// StaticWeight is the route's static weight for this (channel, model) unit.
+	// Zero means no route is configured; WeightedRate then falls back to a
+	// plain mean so a channel without weights is not dropped.
+	StaticWeight float64
 }
 
 // UpstreamHealthPoint is one channel/model request-derived health signal:
@@ -721,39 +730,78 @@ func recentSeries(buckets map[int64]counters, probes map[int64]ProbeBucket, upst
 	points := make([]ModelRecentPoint, 0, limit)
 	for offset := int64(limit - 1); offset >= 0; offset-- {
 		ts := latest - offset*bucketSeconds
+
+		// Two signals for this hour: real requests and statically-weighted
+		// upstream probes. Both feed the SAME point — the card shows 24 hourly
+		// success rates and 24 hourly latencies, each a blend of what the site
+		// actually served and what the upstream health reported.
+		var realRate, probeRate *float64
+		var realLatency, probeLatency *int64
+
 		if b := buckets[ts]; b.requestCount > 0 {
-			latency := b.totalLatencyMs / b.requestCount
-			rate := math.Round(successRate(b)*100) / 100
-			points = append(points, ModelRecentPoint{
-				Ts: ts, LatencyMs: &latency, SuccessRate: &rate, Source: "request",
-			})
-			continue
+			r := math.Round(successRate(b)*100) / 100
+			realRate = &r
+			lat := b.totalLatencyMs / b.requestCount
+			realLatency = &lat
 		}
 		if p := probes[ts]; p.TotalCount > 0 {
-			// Probe outcomes come from real traffic logs, so an hour with
-			// probes shows what the upstream actually did then.
-			latency := int64(0)
-			if p.SuccessCount > 0 {
-				latency = p.TotalLatencyMs / p.SuccessCount
+			r := math.Round(float64(p.SuccessCount)/float64(p.TotalCount)*10000) / 100
+			probeRate = &r
+			if p.AvgLatencyMs > 0 {
+				lat := p.AvgLatencyMs
+				probeLatency = &lat
 			}
-			rate := math.Round(float64(p.SuccessCount)/float64(p.TotalCount)*10000) / 100
-			point := ModelRecentPoint{Ts: ts, SuccessRate: &rate, Source: "upstream"}
-			if latency > 0 {
-				point.LatencyMs = &latency
-			}
-			points = append(points, point)
-			continue
 		}
-		if upstreamRate != nil {
-			rate := math.Round(*upstreamRate*100) / 100
-			points = append(points, ModelRecentPoint{
-				Ts: ts, LatencyMs: upstreamLatency, SuccessRate: &rate, Source: "upstream",
-			})
-			continue
+		// Fall back to the window-wide upstream snapshot when this hour has no
+		// probe bucket; it is the best available estimate for that hour.
+		if probeRate == nil && upstreamRate != nil {
+			r := math.Round(*upstreamRate*100) / 100
+			probeRate = &r
+			probeLatency = upstreamLatency
 		}
-		points = append(points, ModelRecentPoint{Ts: ts, Source: "none"})
+
+		// Blend available signals with equal weight (the two sources both
+		// describe the same hour; WeightedRate already handled the channel
+		// dimension inside probeRate).
+		blended := BlendRates(realRate, probeRate)
+		point := ModelRecentPoint{Ts: ts, Source: "upstream"}
+		if blended != nil {
+			r := *blended
+			point.SuccessRate = &r
+		}
+		lat := BlendLatency(realLatency, probeLatency)
+		if lat != nil {
+			point.LatencyMs = lat
+		}
+		if realRate != nil && probeRate == nil {
+			point.Source = "request"
+		}
+		if blended == nil {
+			point.SuccessRate = nil
+			point.Source = "none"
+		}
+		points = append(points, point)
 	}
 	return points
+}
+
+// BlendLatency averages the available latency signals in milliseconds,
+// skipping nil gaps rather than treating them as zero.
+func BlendLatency(values ...*int64) *int64 {
+	var sum int64
+	var count int64
+	for _, v := range values {
+		if v == nil || *v < 0 {
+			continue
+		}
+		sum += *v
+		count++
+	}
+	if count == 0 {
+		return nil
+	}
+	avg := sum / count
+	return &avg
 }
 
 func recentSuccessRates(buckets map[int64]counters, limit int) []float64 {

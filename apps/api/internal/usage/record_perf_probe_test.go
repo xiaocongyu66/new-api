@@ -166,8 +166,8 @@ func TestRecentSeriesProbeHoursShowVariation(t *testing.T) {
 	okTs := latest - step
 
 	probes := map[int64]ProbeBucket{
-		failTs: {TotalCount: 3, SuccessCount: 0, TotalLatencyMs: 0},
-		okTs:   {TotalCount: 2, SuccessCount: 2, TotalLatencyMs: 300},
+		failTs: {TotalCount: 3, SuccessCount: 0},
+		okTs:   {TotalCount: 2, SuccessCount: 2, AvgLatencyMs: 300},
 	}
 
 	points := recentSeries(nil, probes, nil, nil, 3)
@@ -194,5 +194,69 @@ func TestRecentSeriesProbeHoursShowVariation(t *testing.T) {
 	require.NotNil(t, p.SuccessRate)
 	assert.InDelta(t, 100, *p.SuccessRate, 0.001)
 	require.NotNil(t, p.LatencyMs)
-	assert.Equal(t, int64(150), *p.LatencyMs, "latency averages only measured outcomes")
+	assert.Equal(t, int64(300), *p.LatencyMs, "AvgLatencyMs is the weighted mean already")
+}
+
+// TestRecentSeriesBlendsRequestAndProbePerHour 钉住用户要求的核心口径：
+// 图表 24 个小时点，每个点的成功率与延迟都是「该小时真实请求」与
+// 「该小时静态权重加权的上游探测」的混合，而不是择一、也不是把最新值平铺。
+func TestRecentSeriesBlendsRequestAndProbePerHour(t *testing.T) {
+	latest := bucketStart(time.Now().Unix())
+	step := GetBucketSeconds()
+	if step <= 0 {
+		step = 3600
+	}
+	// Hour A has BOTH a real request and a probe: rate/latency must blend.
+	// Hour B has ONLY a real request. Hour C has ONLY a probe.
+	mixedTs := latest - 2*step
+	requestOnlyTs := latest - step
+	probeOnlyTs := latest
+
+	buckets := map[int64]counters{
+		mixedTs:       {requestCount: 2, successCount: 1, totalLatencyMs: 1000}, // 50%, 500ms
+		requestOnlyTs: {requestCount: 1, successCount: 1, totalLatencyMs: 300},  // 100%, 300ms
+	}
+	probes := map[int64]ProbeBucket{
+		mixedTs:     {TotalCount: 100, SuccessCount: 100, AvgLatencyMs: 900}, // 100%, 900ms (weighted upstream)
+		probeOnlyTs: {TotalCount: 100, SuccessCount: 0, TotalLatencyMs: 0},   // 0%
+	}
+
+	points := recentSeries(buckets, probes, nil, nil, 3)
+	require.Len(t, points, 3)
+	byTs := map[int64]ModelRecentPoint{}
+	for _, p := range points {
+		byTs[p.Ts] = p
+	}
+
+	mixed := byTs[mixedTs]
+	require.NotNil(t, mixed.SuccessRate)
+	assert.InDelta(t, 75, *mixed.SuccessRate, 0.001, "blend of 50% request and 100% probe")
+	require.NotNil(t, mixed.LatencyMs)
+	assert.Equal(t, int64(700), *mixed.LatencyMs, "blend of 500ms and 900ms")
+
+	reqOnly := byTs[requestOnlyTs]
+	require.NotNil(t, reqOnly.SuccessRate)
+	assert.InDelta(t, 100, *reqOnly.SuccessRate, 0.001)
+	assert.Equal(t, "request", reqOnly.Source)
+
+	probeOnly := byTs[probeOnlyTs]
+	require.NotNil(t, probeOnly.SuccessRate)
+	assert.InDelta(t, 0, *probeOnly.SuccessRate, 0.001)
+	assert.Equal(t, "upstream", probeOnly.Source)
+}
+
+// TestRecentSeriesFillsAllPoints 钉住：24 小时每个刻度都必须有成功率点，
+// 没有该小时信号时用窗口级上游值回退，不能出现 null 缺口把线打断。
+func TestRecentSeriesFillsAllPoints(t *testing.T) {
+	upstreamRate := 42.0
+	upstreamLat := int64(310)
+
+	points := recentSeries(nil, nil, &upstreamRate, &upstreamLat, 24)
+	require.Len(t, points, 24)
+	for _, p := range points {
+		require.NotNil(t, p.SuccessRate, "every hour must carry a success rate")
+		assert.InDelta(t, 42, *p.SuccessRate, 0.001)
+		require.NotNil(t, p.LatencyMs)
+		assert.Equal(t, int64(310), *p.LatencyMs)
+	}
 }
