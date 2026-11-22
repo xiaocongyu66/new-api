@@ -37,7 +37,7 @@ import type {
   PricingAnalysisData,
   PricingAnalysisRow,
   PriceFluctuationChange,
-} from '../types'
+} from '@/features/system-settings/types'
 
 type PricingAnalysisTableProps = {
   data: PricingAnalysisData | null

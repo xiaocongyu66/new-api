@@ -48,9 +48,10 @@ const (
 // ---- Types ----
 
 type upstreamResult struct {
-	Name string         `json:"name"`
-	Data map[string]any `json:"data,omitempty"`
-	Err  string         `json:"err,omitempty"`
+	Name      string         `json:"name"`
+	ChannelID int            `json:"channel_id,omitempty"`
+	Data      map[string]any `json:"data,omitempty"`
+	Err       string         `json:"err,omitempty"`
 }
 
 type modelsDevProvider struct {
@@ -748,28 +749,28 @@ func FetchUpstreamRatios(c contract.Context) {
 			httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 			if err != nil {
 				logger.LogWarn(c.Context(), "build request failed: "+err.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: err.Error()}
 				return
 			}
 
 			if isOpenRouter && chItem.ID != 0 {
 				dbCh, err := channel.GetChannelById(chItem.ID, true)
 				if err != nil {
-					ch <- upstreamResult{Name: uniqueName, Err: "failed to get channel key: " + err.Error()}
+					ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: "failed to get channel key: " + err.Error()}
 					return
 				}
 				key, _, apiErr := dbCh.GetNextEnabledKey("")
 				if apiErr != nil {
-					ch <- upstreamResult{Name: uniqueName, Err: "failed to get enabled channel key: " + apiErr.Error()}
+					ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: "failed to get enabled channel key: " + apiErr.Error()}
 					return
 				}
 				if strings.TrimSpace(key) == "" {
-					ch <- upstreamResult{Name: uniqueName, Err: "no API key configured for this channel"}
+					ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: "no API key configured for this channel"}
 					return
 				}
 				httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(key))
 			} else if isOpenRouter {
-				ch <- upstreamResult{Name: uniqueName, Err: "OpenRouter requires a valid channel with API key"}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: "OpenRouter requires a valid channel with API key"}
 				return
 			}
 
@@ -784,13 +785,22 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 			if lastErr != nil {
 				logger.LogWarn(c.Context(), "http error on "+chItem.Name+": "+lastErr.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: lastErr.Error()}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: lastErr.Error()}
 				return
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
 				logger.LogWarn(c.Context(), "non-200 from "+chItem.Name+": "+resp.Status)
-				ch <- upstreamResult{Name: uniqueName, Err: resp.Status}
+				errMsg := resp.Status
+				switch resp.StatusCode {
+				case http.StatusNotFound:
+					errMsg = "上游未提供 /api/pricing 接口（不是 new-api，或该接口已关闭）"
+				case http.StatusForbidden:
+					errMsg = "上游拒绝访问 /api/pricing（403），可能需要授权或 IP 白名单"
+				case http.StatusUnauthorized:
+					errMsg = "上游要求登录才能读取 /api/pricing（401）"
+				}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: errMsg}
 				return
 			}
 
@@ -801,7 +811,7 @@ func FetchUpstreamRatios(c contract.Context) {
 			bodyBytes, err := io.ReadAll(limited)
 			if err != nil {
 				logger.LogWarn(c.Context(), "read response failed from "+chItem.Name+": "+err.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: err.Error()}
 				return
 			}
 
@@ -809,10 +819,10 @@ func FetchUpstreamRatios(c contract.Context) {
 				converted, err := convertOpenRouterToRatioData(bytes.NewReader(bodyBytes))
 				if err != nil {
 					logger.LogWarn(c.Context(), "OpenRouter parse failed from "+chItem.Name+": "+err.Error())
-					ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
+					ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: err.Error()}
 					return
 				}
-				ch <- upstreamResult{Name: uniqueName, Data: converted}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Data: converted}
 				return
 			}
 
@@ -820,10 +830,10 @@ func FetchUpstreamRatios(c contract.Context) {
 				converted, err := convertModelsDevToRatioData(bytes.NewReader(bodyBytes))
 				if err != nil {
 					logger.LogWarn(c.Context(), "models.dev parse failed from "+chItem.Name+": "+err.Error())
-					ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
+					ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: err.Error()}
 					return
 				}
-				ch <- upstreamResult{Name: uniqueName, Data: converted}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Data: converted}
 				return
 			}
 
@@ -836,12 +846,12 @@ func FetchUpstreamRatios(c contract.Context) {
 
 			if err := common.DecodeJson(bytes.NewReader(bodyBytes), &body); err != nil {
 				logger.LogWarn(c.Context(), "json decode failed from "+chItem.Name+": "+err.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: err.Error()}
 				return
 			}
 
 			if !body.Success {
-				ch <- upstreamResult{Name: uniqueName, Err: body.Message}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: body.Message}
 				return
 			}
 
@@ -855,7 +865,7 @@ func FetchUpstreamRatios(c contract.Context) {
 					}
 				}
 				if isType1 {
-					ch <- upstreamResult{Name: uniqueName, Data: type1Data}
+					ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Data: type1Data}
 					return
 				}
 			}
@@ -880,7 +890,7 @@ func FetchUpstreamRatios(c contract.Context) {
 			}
 			if err := common.Unmarshal(body.Data, &pricingItems); err != nil {
 				logger.LogWarn(c.Context(), "unrecognized data format from "+chItem.Name+": "+err.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: "无法解析上游返回数据"}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: "无法解析上游返回数据"}
 				return
 			}
 
@@ -1024,7 +1034,7 @@ func FetchUpstreamRatios(c contract.Context) {
 				converted["currency"] = map[string]any{"": currency}
 			}
 
-			ch <- upstreamResult{Name: uniqueName, Data: converted}
+			ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Data: converted}
 		}(chn)
 	}
 
@@ -1039,6 +1049,7 @@ func FetchUpstreamRatios(c contract.Context) {
 		data map[string]any
 	}
 
+	syncedAt := common.GetTimestamp()
 	for r := range ch {
 		if r.Err != "" {
 			testResults = append(testResults, dto.TestResult{
@@ -1046,7 +1057,9 @@ func FetchUpstreamRatios(c contract.Context) {
 				Status: "error",
 				Error:  r.Err,
 			})
+			recordUpstreamSyncStatus(r.ChannelID, r.Name, "error", r.Err, syncedAt)
 		} else {
+			recordUpstreamSyncStatus(r.ChannelID, r.Name, "success", "", syncedAt)
 			testResults = append(testResults, dto.TestResult{
 				Name:   r.Name,
 				Status: "success",
@@ -1060,7 +1073,7 @@ func FetchUpstreamRatios(c contract.Context) {
 
 	// Persist this batch of upstream prices for /analysis and /fluctuation.
 	// Best effort: persistence failures must never break the fetch response.
-	persistUpstreamPriceSnapshots(common.GetTimestamp(), successfulChannels)
+	persistUpstreamPriceSnapshots(syncedAt, successfulChannels)
 	differences := buildDifferences(localData, successfulChannels)
 
 	_ = c.JSON(http.StatusOK, common.H{
@@ -1083,16 +1096,23 @@ func GetSyncableChannels(c contract.Context) {
 		return
 	}
 
+	statuses := loadUpstreamSyncStatuses()
 	var syncableChannels []dto.SyncableChannel
 	for _, channel := range channels {
 		if channel.GetBaseURL() != "" {
-			syncableChannels = append(syncableChannels, dto.SyncableChannel{
+			item := dto.SyncableChannel{
 				ID:      channel.Id,
 				Name:    channel.Name,
 				BaseURL: channel.GetBaseURL(),
 				Status:  channel.Status,
 				Type:    channel.Type,
-			})
+			}
+			if last, ok := statuses[channel.Id]; ok {
+				item.LastSyncStatus = last.Status
+				item.LastSyncError = last.Error
+				item.LastSyncedAt = last.SyncedAt
+			}
+			syncableChannels = append(syncableChannels, item)
 		}
 	}
 

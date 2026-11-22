@@ -35,7 +35,6 @@ import { positiveIntegerSchema } from '../utils/numeric-field'
 import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
-import { UpstreamRatioSync } from './upstream-ratio-sync'
 import {
   formatJsonForTextarea,
   type JsonValidationError,
@@ -140,7 +139,7 @@ const createGroupSchema = (t: Translate) =>
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
 type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
-export type RatioTabId = 'models' | 'groups' | 'tool-prices' | 'upstream-sync'
+export type RatioTabId = 'models' | 'groups' | 'tool-prices'
 
 type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
@@ -158,7 +157,7 @@ export function RatioSettingsCard({
   toolPricesDefault,
   completionRatioMeta,
   titleKey = 'Pricing Ratios',
-  visibleTabs = ['models', 'groups', 'tool-prices', 'upstream-sync'],
+  visibleTabs = ['models', 'groups', 'tool-prices'],
 }: RatioSettingsCardProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -439,7 +438,6 @@ export function RatioSettingsCard({
     models: 'Model prices',
     groups: 'Group ratios',
     'tool-prices': 'Tool prices',
-    'upstream-sync': 'Upstream sync',
   }
   const tabsGridClass =
     {
@@ -474,10 +472,7 @@ export function RatioSettingsCard({
         />
       )
     }
-    if (tab === 'tool-prices') {
-      return <ToolPriceSettings defaultValue={toolPricesDefault} />
-    }
-    return <UpstreamRatioSync />
+    return <ToolPriceSettings defaultValue={toolPricesDefault} />
   }
 
   const renderTabSwitcher = () => (

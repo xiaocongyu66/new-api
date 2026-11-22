@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils'
 import type {
   PricingAnalysisChannel,
   PricingAnalysisRow,
-} from '../types'
+} from '@/features/system-settings/types'
 
 type Props = {
   row: PricingAnalysisRow | null

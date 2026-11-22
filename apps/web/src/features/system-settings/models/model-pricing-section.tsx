@@ -50,12 +50,12 @@ const modelPricingDefaults = {
  * Model pricing editor, wired to the current system options.
  *
  * `tabs` decides how much of the editor this instance owns: the billing settings
- * page passes all three and keeps the card's own switcher, while the channels
+ * page passes every tab and keeps the card's own switcher, while the channels
  * page owns the tab row and passes a single tab so the card renders just that
  * view (a one-tab card drops its internal switcher).
  */
 export function ModelPricingSection({
-  tabs = ['models', 'tool-prices', 'upstream-sync'],
+  tabs = ['models', 'tool-prices'],
 }: {
   tabs?: RatioTabId[]
 }) {

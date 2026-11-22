@@ -52,11 +52,6 @@ const PRICING_TABS: {
 }[] = [
   { id: 'pricing-models', labelKey: 'Pricing', cardTab: 'models' },
   { id: 'pricing-tools', labelKey: 'Tool prices', cardTab: 'tool-prices' },
-  {
-    id: 'pricing-upstream',
-    labelKey: 'Upstream sync',
-    cardTab: 'upstream-sync',
-  },
 ]
 
 function ChannelsContent() {

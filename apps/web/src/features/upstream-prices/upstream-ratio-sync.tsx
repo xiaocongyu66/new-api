@@ -31,7 +31,7 @@ import {
   fetchUpstreamRatios,
   getPriceFluctuations,
   getUpstreamChannels,
-} from '../api'
+} from '@/features/system-settings/api'
 import type {
   PriceFluctuationChange,
   PricingAnalysisData,
@@ -39,12 +39,12 @@ import type {
   PricingAnalysisRequest,
   UpstreamChannel,
   UpstreamConfig,
-} from '../types'
+} from '@/features/system-settings/types'
 import { PricingAnalysisDialog } from './pricing-analysis-dialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 import { PricingAnalysisTable } from './pricing-analysis-table'
-import { SettingsPageActionsPortal } from '../components/settings-page-context'
+import { SettingsPageActionsPortal } from '@/features/system-settings/components/settings-page-context'
 import { ChannelSelectorDialog } from './channel-selector-dialog'
 import {
   DEFAULT_ENDPOINT,

@@ -161,6 +161,7 @@ func PricingAnalysis(c contract.Context) {
 		return
 	}
 	tierUsageMap := tierUsageByWindow(allMatched, windows, start, end)
+	manualFields := loadManualUpstreamFields()
 
 	rows := make([]dto.AnalysisRow, 0, len(models))
 	for i, mm := range models {
@@ -205,7 +206,7 @@ func PricingAnalysis(c contract.Context) {
 				if ug.Requests == 0 && ug.Tokens == 0 {
 					continue
 				}
-				entry, chCost, priced := buildChannelEntry(m, ch, ug, localFields, snapshotBySource, windows, canonicalWindow, tierUsageMap)
+				entry, chCost, priced := buildChannelEntry(m, ch, ug, localFields, snapshotBySource, manualFields, windows, canonicalWindow, tierUsageMap)
 				chEntries = append(chEntries, entry)
 				if priced {
 					cost += chCost
@@ -253,7 +254,7 @@ func PricingAnalysis(c contract.Context) {
 			if ug.Requests == 0 && ug.Tokens == 0 {
 				continue
 			}
-			entry, chCost, priced := buildChannelEntry(name, ch, ug, localFields, snapshotBySource, windows, canonicalWindow, tierUsageMap)
+			entry, chCost, priced := buildChannelEntry(name, ch, ug, localFields, snapshotBySource, manualFields, windows, canonicalWindow, tierUsageMap)
 			chEntries = append(chEntries, entry)
 			if priced {
 				cost += chCost
@@ -436,12 +437,24 @@ func upstreamGroupMultiplier(fields map[string]any, siteGroupRatio map[string]fl
 // representative-window estimate fallback when the range has no logs.
 // priced=false when the channel carries no upstream price, so callers never
 // mix borrowed reference prices into their cost sums.
-func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localFields map[string]map[string]any, snapshotBySource map[string]map[string]map[string]any, windows []int, canonicalWindow int, tierUsageMap map[[3]any][]pricingSample) (dto.AnalysisChannel, float64, bool) {
+func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localFields map[string]map[string]any, snapshotBySource map[string]map[string]map[string]any, manualFields map[[2]any]map[string]any, windows []int, canonicalWindow int, tierUsageMap map[[3]any][]pricingSample) (dto.AnalysisChannel, float64, bool) {
 	revenue := float64(ug.Quota) / float64(common.QuotaPerUnit)
 	sourceKey := channelSourceKey(ch.ChannelName, ch.ChannelID)
 	upFields := resolveUpstreamFields(modelName, snapshotBySource[sourceKey], ch.ModelMapping)
+	// A channel whose upstream exposes no /api/pricing can still be compared
+	// against an operator-entered price. A fetched snapshot always wins.
+	priceSource := ""
+	if len(upFields) > 0 {
+		priceSource = "snapshot"
+	} else if manual := manualFields[manualPriceKey(ch.ChannelID, modelName)]; len(manual) > 0 {
+		upFields = manual
+		priceSource = "manual"
+	}
 	upstreamExpr, _ := modelExpr(upFields)
 	upstreamRatio, upstreamGroups, upstreamAmbiguous := upstreamGroupMultiplier(upFields, snapshotGroupRatios(snapshotBySource, sourceKey))
+	if priceSource == "manual" {
+		upstreamRatio, upstreamGroups, upstreamAmbiguous = 1, nil, false
+	}
 	currencyFactor, upstreamCurrency, currencySupported := upstreamCurrencyFactor(snapshotCurrency(snapshotBySource, sourceKey))
 	upstreamRatio *= currencyFactor
 	entry := dto.AnalysisChannel{
@@ -460,6 +473,7 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 		UpstreamGroupAmbiguous: upstreamAmbiguous,
 		UpstreamCurrency:       upstreamCurrency,
 		UpstreamCostComparable: currencySupported,
+		PriceSource:            priceSource,
 		Windows:                channelWindows(localFields[modelName], upFields, windows, ch.ChannelID, modelName, tierUsageMap, upstreamRatio),
 	}
 	if upstreamExpr == "" || !currencySupported {

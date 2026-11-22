@@ -200,3 +200,60 @@ func TestIsPresetSource(t *testing.T) {
 	assert.False(t, isPresetSource("顺达 抗截断 按次(15)"))
 	assert.False(t, isPresetSource(""))
 }
+
+// TestManualPriceFieldsShape pins the two manual price shapes: per-request
+// becomes a fixed ModelPrice, per-token becomes the same tier() expression the
+// evaluator already prices, with USD/1M coefficients used as-is.
+func TestManualPriceFieldsShape(t *testing.T) {
+	perCall := manualPriceFields(&ManualUpstreamPrice{
+		ChannelID: 7, ModelName: "gpt-4o", Mode: manualModePerCall, PriceIn: 0.02,
+	})
+	expr, ok := modelExpr(perCall)
+	require.True(t, ok)
+	assert.Equal(t, "per_call", priceModeFromFields(expr, perCall))
+	price := evalUsd(expr, 1000)
+	require.NotNil(t, price)
+	assert.InDelta(t, 0.02, *price, 1e-12)
+
+	perToken := manualPriceFields(&ManualUpstreamPrice{
+		ChannelID: 7, ModelName: "claude", Mode: manualModePerToken, PriceIn: 3, PriceOut: 15,
+	})
+	expr, ok = modelExpr(perToken)
+	require.True(t, ok)
+	assert.Equal(t, "per_token_tiered", priceModeFromFields(expr, perToken))
+	price = evalUsd(expr, 1000)
+	require.NotNil(t, price)
+	// 1k input + 250 output at USD 3 / 15 per 1M.
+	assert.InDelta(t, (3*1000+15*250)/1e6, *price, 1e-12)
+}
+
+// TestBuildChannelEntryFallsBackToManualPrice pins the precedence rule: a
+// fetched snapshot wins, a manual entry is used only when the channel has no
+// snapshot for that model, and the row is marked price_source=manual.
+func TestBuildChannelEntryFallsBackToManualPrice(t *testing.T) {
+	ch := boundChannelRow{ChannelID: 7, ChannelName: "no-pricing-upstream", ModelName: "gpt-4o"}
+	ug := usageAgg{ChannelID: 7, ModelName: "gpt-4o", Tokens: 1000, Requests: 2, Quota: 0}
+	manual := map[[2]any]map[string]any{
+		manualPriceKey(7, "gpt-4o"): manualPriceFields(&ManualUpstreamPrice{
+			ChannelID: 7, ModelName: "gpt-4o", Mode: manualModePerCall, PriceIn: 0.02,
+		}),
+	}
+
+	entry, _, priced := buildChannelEntry("gpt-4o", ch, ug, nil, nil, manual, []int{10}, 10, nil)
+	assert.True(t, priced)
+	assert.Equal(t, "manual", entry.PriceSource)
+	assert.Equal(t, "per_call", entry.PriceMode)
+	assert.Equal(t, 1.0, entry.UpstreamGroupRatio)
+
+	// A snapshot for the same channel outranks the manual entry.
+	snapshots := map[string]map[string]map[string]any{
+		channelSourceKey(ch.ChannelName, ch.ChannelID): {
+			"gpt-4o": manualPriceFields(&ManualUpstreamPrice{
+				ChannelID: 7, ModelName: "gpt-4o", Mode: manualModePerCall, PriceIn: 0.5,
+			}),
+		},
+	}
+	entry, _, priced = buildChannelEntry("gpt-4o", ch, ug, nil, snapshots, manual, []int{10}, 10, nil)
+	assert.True(t, priced)
+	assert.Equal(t, "snapshot", entry.PriceSource)
+}
