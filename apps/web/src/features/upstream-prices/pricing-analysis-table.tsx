@@ -37,7 +37,7 @@ import type {
   PricingAnalysisData,
   PricingAnalysisRow,
   PriceFluctuationChange,
-} from '../types'
+} from '@/features/system-settings/types'
 
 type PricingAnalysisTableProps = {
   data: PricingAnalysisData | null
@@ -277,7 +277,8 @@ export function PricingAnalysisTable({
 
   return (
     <div className='flex h-full min-h-0 flex-col gap-4'>
-      <div className='flex shrink-0 flex-col gap-2 lg:flex-row lg:items-center'>
+      {/* 窄屏三个筛选器并成一行（三列），给下方表格让出空间 */}
+      <div className='grid shrink-0 grid-cols-3 items-center gap-2 lg:flex lg:flex-row lg:gap-2'>
         <Select
           items={[
             { value: '0', label: t('All vendors') },
@@ -328,19 +329,22 @@ export function PricingAnalysisTable({
           </SelectContent>
         </Select>
 
-        <Input
-          type='number'
-          min={0}
-          value={threshold}
-          onChange={(event) => {
-            const next = Number(event.target.value)
-            if (Number.isFinite(next) && next >= 0) onThresholdChange(next)
-          }}
-          disabled={isLoading}
-          className='w-full lg:w-40'
-          aria-label={t('Fluctuation alerts')}
-          placeholder={t('Fluctuation alerts')}
-        />
+        {/* 窄屏并入同一行后不再放独立标签：下方波动提醒区已说明含义 */}
+        <div>
+          <Input
+            type='number'
+            min={0}
+            value={threshold}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              if (Number.isFinite(next) && next >= 0) onThresholdChange(next)
+            }}
+            disabled={isLoading}
+            className='w-full lg:w-40'
+            aria-label={t('Fluctuation alerts')}
+            placeholder={t('Fluctuation alerts')}
+          />
+        </div>
 
 
       </div>

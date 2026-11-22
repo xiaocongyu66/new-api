@@ -573,6 +573,53 @@ export type UpstreamChannel = {
   base_url: string
   status: number
   type?: number
+  // Last /fetch outcome per channel; "error" + last_sync_error marks an
+  // upstream that exposes no /api/pricing, which is what the manual tab fills.
+  last_sync_status?: 'success' | 'error' | string
+  last_sync_error?: string
+  last_synced_at?: number
+}
+
+export type ManualUpstreamPriceMode = 'per_call' | 'per_token' | 'expr'
+
+export type ManualUpstreamPrice = {
+  id?: number
+  channel_id: number
+  model_name: string
+  mode: ManualUpstreamPriceMode
+  // per_call: USD per request. per_token: USD per 1M tokens for the matching
+  // token class (input / output / cache read / cache write).
+  price_in: number
+  price_out: number
+  price_cache_read: number
+  price_cache_write: number
+  // expr: full billing expression, same syntax as the model pricing editor.
+  expr: string
+  updated_at?: number
+  updated_by?: number
+}
+
+export type ManualUpstreamPriceUpsertRequest = {
+  channel_id: number
+  model_name: string
+  mode: ManualUpstreamPriceMode
+  price_in: number
+  price_out: number
+  price_cache_read: number
+  price_cache_write: number
+  expr: string
+}
+
+export type ManualUpstreamPriceUpsertResponse = {
+  success: boolean
+  message?: string
+  data: ManualUpstreamPrice
+}
+
+export type ManualUpstreamPriceListResponse = {
+  success: boolean
+  message?: string
+  data: ManualUpstreamPrice[]
 }
 
 export type RatioType =
@@ -672,6 +719,9 @@ export type PricingAnalysisChannel = {
   upstream_group_ambiguous: boolean
   upstream_currency: string
   upstream_cost_comparable: boolean
+  // "snapshot" = upstream /api/pricing, "manual" = operator-entered fallback,
+  // "" = no upstream price for this model.
+  price_source?: 'snapshot' | 'manual' | ''
 }
 
 export type PricingAnalysisRow = {

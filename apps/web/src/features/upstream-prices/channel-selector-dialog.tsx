@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/select'
 import { useDebounce } from '@/hooks/use-debounce'
 
-import type { UpstreamChannel } from '../types'
+import type { UpstreamChannel } from '@/features/system-settings/types'
 import {
   CHANNEL_STATUS_CONFIG,
   DEFAULT_ENDPOINT,
@@ -182,6 +182,51 @@ export function ChannelSelectorDialog({
             >
               {url}
             </span>
+          )
+        },
+      },
+      {
+        id: 'last_sync',
+        header: t('Last sync'),
+        size: 150,
+        minSize: 120,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const channel = row.original
+          if (channel.last_sync_status === 'no_pricing') {
+            return (
+              <StatusBadge
+                label={t('No pricing API')}
+                variant='danger'
+                size='sm'
+                copyable={false}
+                title={channel.last_sync_error || undefined}
+              />
+            )
+          }
+          if (channel.last_sync_status === 'error') {
+            return (
+              <StatusBadge
+                label={t('Sync failed')}
+                variant='warning'
+                size='sm'
+                copyable={false}
+                title={channel.last_sync_error || undefined}
+              />
+            )
+          }
+          if (channel.last_sync_status === 'success') {
+            return (
+              <StatusBadge
+                label={t('Synced')}
+                variant='success'
+                size='sm'
+                copyable={false}
+              />
+            )
+          }
+          return (
+            <span className='text-muted-foreground text-xs'>—</span>
           )
         },
       },

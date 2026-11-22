@@ -23,6 +23,7 @@ import {
   Radio,
   ScanSearch,
   ServerCog,
+  Tags,
   ShieldOff,
   Settings,
   Ticket,
@@ -48,6 +49,14 @@ export type AdminNavigationItem = {
 
 export const ADMIN_NAVIGATION: readonly AdminNavigationItem[] = [
   { id: 'channels', labelKey: 'admin.channels', to: '/admin/channels', icon: Radio },
+  // 上游价格页从「渠道 > 上游同步」页签抽出：自动同步与手工价格合为一个页面。
+  {
+    id: 'upstream-prices',
+    labelKey: 'admin.upstreamPrices',
+    to: '/admin/upstream-prices',
+    icon: Tags,
+    requiredCapability: { resource: 'system', action: 'settings' },
+  },
   { id: 'models', labelKey: 'admin.models', to: '/admin/models/$section', params: { section: 'metadata' }, icon: Box },
   // 路由页从「模型配置」拆出，作为「管理」组入口；页面仍由 models 域渲染。
   {

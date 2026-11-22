@@ -10,6 +10,7 @@ DELETE /api/performance/disk_cache
 DELETE /api/performance/logs
 DELETE /api/prefill_group/:id
 DELETE /api/proxy/nodes/:id
+DELETE /api/ratio_sync/manual
 DELETE /api/redemption/:id
 DELETE /api/redemption/invalid
 DELETE /api/subscription/admin/user_subscriptions/:id
@@ -111,6 +112,7 @@ GET /api/rankings
 GET /api/ratio_config
 GET /api/ratio_sync/channels
 GET /api/ratio_sync/fluctuation
+GET /api/ratio_sync/manual
 GET /api/redemption/
 GET /api/redemption/:id
 GET /api/redemption/names
@@ -316,6 +318,7 @@ PUT /api/option/
 PUT /api/prefill_group/
 PUT /api/proxy/config
 PUT /api/proxy/nodes/:id
+PUT /api/ratio_sync/manual
 PUT /api/redemption/
 PUT /api/subscription/admin/plans/:id
 PUT /api/subscription/self/preference

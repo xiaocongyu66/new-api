@@ -56,7 +56,6 @@ export type ChannelsPageTab =
   | 'channels'
   | 'pricing-models'
   | 'pricing-tools'
-  | 'pricing-upstream'
 
 type ChannelsContextType = {
   open: DialogType

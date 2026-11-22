@@ -23,6 +23,9 @@ import type {
   GeoipDatabaseStatusResponse,
   FetchUpstreamRatiosRequest,
   LogCleanupTask,
+  ManualUpstreamPriceListResponse,
+  ManualUpstreamPriceUpsertRequest,
+  ManualUpstreamPriceUpsertResponse,
   PriceFluctuationResponse,
   PricingAnalysisRequest,
   PricingAnalysisResponse,
@@ -123,6 +126,35 @@ export async function getPriceFluctuations(thresholdPct: number) {
   const res = await api.get<PriceFluctuationResponse>(
     '/api/ratio_sync/fluctuation',
     { params: { threshold_pct: thresholdPct } }
+  )
+  return res.data
+}
+
+export async function getManualUpstreamPrices(channelId: number) {
+  const res = await api.get<ManualUpstreamPriceListResponse>(
+    '/api/ratio_sync/manual',
+    { params: { channel_id: channelId } }
+  )
+  return res.data
+}
+
+export async function upsertManualUpstreamPrice(
+  request: ManualUpstreamPriceUpsertRequest
+) {
+  const res = await api.put<ManualUpstreamPriceUpsertResponse>(
+    '/api/ratio_sync/manual',
+    request
+  )
+  return res.data
+}
+
+export async function deleteManualUpstreamPrice(
+  channelId: number,
+  modelName: string
+) {
+  const res = await api.delete<{ success: boolean; message?: string }>(
+    '/api/ratio_sync/manual',
+    { params: { channel_id: channelId, model_name: modelName } }
   )
   return res.data
 }

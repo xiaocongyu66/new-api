@@ -176,21 +176,21 @@ describe('channel page header actions', () => {
     )
   })
 
-  test('renders all five page tabs in one row beside the title', async () => {
+  test('renders the four page tabs in one row beside the title', async () => {
     const host = await renderChannelsPage({
       id: 1,
       username: 'root',
       role: ROLE.SUPER_ADMIN,
     })
 
-    // 定价面板内部的三个子页签上提到页面页签行，与「创建 / 渠道」并列。
+    // 定价面板的子页签上提到页面页签行，与「创建 / 渠道」并列。上游价格
+    // 已拆成独立页面（/admin/upstream-prices），不再占这里的页签。
     // 创建页签同时挂窄屏/宽屏两个文案，textContent 会把两者拼起来。
     assert.deepEqual(pageTabLabels(host), [
       'CreateCreate Channel',
       'Channels',
       'Pricing',
       'Tool prices',
-      'Upstream sync',
     ])
 
     const tabTriggers = [

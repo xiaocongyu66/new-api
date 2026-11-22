@@ -20,3 +20,15 @@ func PricingAnalysis(c contract.Context) {
 func PriceFluctuation(c contract.Context) {
 	ops.PriceFluctuation(c)
 }
+
+func ListManualUpstreamPrices(c contract.Context) {
+	ops.ListManualUpstreamPrices(c)
+}
+
+func UpsertManualUpstreamPrice(c contract.Context) {
+	ops.UpsertManualUpstreamPrice(c)
+}
+
+func DeleteManualUpstreamPrice(c contract.Context) {
+	ops.DeleteManualUpstreamPrice(c)
+}

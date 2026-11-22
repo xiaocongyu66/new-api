@@ -36,6 +36,11 @@ type SyncableChannel struct {
 	BaseURL string `json:"base_url"`
 	Status  int    `json:"status"`
 	Type    int    `json:"type"`
+	// LastSync* mirror the most recent /fetch outcome so the picker can flag
+	// upstreams that expose no /api/pricing instead of retrying blindly.
+	LastSyncStatus string `json:"last_sync_status,omitempty"`
+	LastSyncError  string `json:"last_sync_error,omitempty"`
+	LastSyncedAt   int64  `json:"last_synced_at,omitempty"`
 }
 
 // PricingAnalysisRequest is the request body for POST /api/ratio_sync/analysis.
@@ -114,6 +119,10 @@ type AnalysisChannel struct {
 	// (TOKENS display mode), so no cost is reported.
 	UpstreamCurrency       string `json:"upstream_currency"`
 	UpstreamCostComparable bool   `json:"upstream_cost_comparable"`
+	// PriceSource is "snapshot" when the price came from the upstream's fetched
+	// /api/pricing, "manual" when it came from the operator-entered table (only
+	// used when the channel has no snapshot for this model), "" when unpriced.
+	PriceSource string `json:"price_source"`
 }
 
 // AnalysisRow is one plaza alias row in the analysis result.
