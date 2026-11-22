@@ -6389,7 +6389,7 @@
     "Last 30 days": "最近 30 天",
     "Last 90 days": "最近 90 天",
     "Refresh Analysis": "刷新分析",
-    "Margin %": "毛利",
+    "Margin %": "毛利率",
     "Profit": "毛利",
     "Fluctuation": "波動",
     "Local price": "本地價格",
@@ -6585,6 +6585,7 @@
     "Cache write price (USD / 1M tokens)": "快取寫價格（美元 / 百萬 tokens）",
     "Billing expression": "計費表達式",
     "Expression is required": "請填寫表達式",
-    "Prices must be non-negative numbers": "價格必須是非負數"
+    "Prices must be non-negative numbers": "價格必須是非負數",
+    "Fluctuation alert threshold (%)": "波動閾值（%）"
   }
 }

@@ -328,19 +328,25 @@ export function PricingAnalysisTable({
           </SelectContent>
         </Select>
 
-        <Input
-          type='number'
-          min={0}
-          value={threshold}
-          onChange={(event) => {
-            const next = Number(event.target.value)
-            if (Number.isFinite(next) && next >= 0) onThresholdChange(next)
-          }}
-          disabled={isLoading}
-          className='w-full lg:w-40'
-          aria-label={t('Fluctuation alerts')}
-          placeholder={t('Fluctuation alerts')}
-        />
+        <div className='flex flex-col gap-1 lg:block'>
+          {/* 窄屏三个筛选器只剩数值看不出含义，给阈值补一个可见标签 */}
+          <span className='text-muted-foreground text-xs lg:hidden'>
+            {t('Fluctuation alert threshold (%)')}
+          </span>
+          <Input
+            type='number'
+            min={0}
+            value={threshold}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              if (Number.isFinite(next) && next >= 0) onThresholdChange(next)
+            }}
+            disabled={isLoading}
+            className='w-full lg:w-40'
+            aria-label={t('Fluctuation alerts')}
+            placeholder={t('Fluctuation alerts')}
+          />
+        </div>
 
 
       </div>

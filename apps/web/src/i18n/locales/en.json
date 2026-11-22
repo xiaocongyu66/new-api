@@ -6580,6 +6580,7 @@
     "Cache write price (USD / 1M tokens)": "Cache write price (USD / 1M tokens)",
     "Billing expression": "Billing expression",
     "Expression is required": "Expression is required",
-    "Prices must be non-negative numbers": "Prices must be non-negative numbers"
+    "Prices must be non-negative numbers": "Prices must be non-negative numbers",
+    "Fluctuation alert threshold (%)": "Fluctuation alert threshold (%)"
   }
 }
