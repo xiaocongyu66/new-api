@@ -24,7 +24,7 @@ func TestRecentSeriesSources(t *testing.T) {
 		map[int64]counters{
 			requestTs: {requestCount: 2, successCount: 1, totalLatencyMs: 1800},
 		},
-		nil, nil,
+		nil, nil, nil,
 		2,
 	)
 
@@ -51,7 +51,7 @@ func TestRecentSeriesUpstreamFallback(t *testing.T) {
 	rate := 42.0
 	latency := int64(310)
 
-	points := recentSeries(nil, &rate, &latency, 2)
+	points := recentSeries(nil, nil, &rate, &latency, 2)
 	require.Len(t, points, 2)
 	for _, point := range points {
 		assert.Equal(t, "upstream", point.Source)
@@ -61,7 +61,7 @@ func TestRecentSeriesUpstreamFallback(t *testing.T) {
 		assert.Equal(t, int64(310), *point.LatencyMs)
 	}
 
-	points = recentSeries(nil, &rate, nil, 1)
+	points = recentSeries(nil, nil, &rate, nil, 1)
 	require.Len(t, points, 1)
 	assert.Equal(t, "upstream", points[0].Source)
 	require.NotNil(t, points[0].SuccessRate)
@@ -90,7 +90,7 @@ func TestQuerySummaryAllBlendsSources(t *testing.T) {
 			ModelName: "with-requests", BucketTs: latest,
 			RequestCount: 2, SuccessCount: 2, TotalLatencyMs: 400,
 		})
-		result, err := QuerySummaryAll(24, nil,
+		result, err := QuerySummaryAll(24, nil, nil,
 			[]UpstreamHealthPoint{{Model: "with-requests", Rate: 0, ObservedAt: now}})
 		require.NoError(t, err)
 		require.Len(t, result.Models, 1)
@@ -101,7 +101,7 @@ func TestQuerySummaryAllBlendsSources(t *testing.T) {
 
 	t.Run("stale upstream ignored", func(t *testing.T) {
 		stubSummaryBuckets(t)
-		result, err := QuerySummaryAll(24, nil,
+		result, err := QuerySummaryAll(24, nil, nil,
 			[]UpstreamHealthPoint{{Model: "stale", Rate: 0, ObservedAt: now - 48*3600}})
 		require.NoError(t, err)
 		assert.Empty(t, result.Models, "an observation older than the window is not a signal")
@@ -127,7 +127,7 @@ func TestUpstreamRateWeightedByStaticWeight(t *testing.T) {
 func TestQuerySummaryAllWeightsUpstreamChannels(t *testing.T) {
 	stubSummaryBuckets(t)
 	now := time.Now().Unix()
-	result, err := QuerySummaryAll(24, nil, []UpstreamHealthPoint{
+	result, err := QuerySummaryAll(24, nil, nil, []UpstreamHealthPoint{
 		{Model: "weighted", ChannelID: 1, Rate: 20, Weight: 1, ObservedAt: now},
 		{Model: "weighted", ChannelID: 2, Rate: 100, Weight: 3, ObservedAt: now},
 	})
@@ -151,4 +151,48 @@ func TestAtomicBucketDropsImpossibleTtft(t *testing.T) {
 	got := b.snapshot()
 	assert.Equal(t, int64(2), got.ttftCount, "the impossible sample must be dropped")
 	assert.Equal(t, int64(1300), got.ttftSumMs)
+}
+
+// TestRecentSeriesProbeHoursShowVariation 钉住：探活结果必须按小时出现在
+// 时间线上——失败的小时低、成功的小时高——而不是一条被继承值填平的直线。
+// 每小时的成功率取该小时探活的池化比例；延迟只从带延迟的结果里平均。
+func TestRecentSeriesProbeHoursShowVariation(t *testing.T) {
+	latest := bucketStart(time.Now().Unix())
+	step := GetBucketSeconds()
+	if step <= 0 {
+		step = 3600
+	}
+	failTs := latest - 2*step
+	okTs := latest - step
+
+	probes := map[int64]ProbeBucket{
+		failTs: {TotalCount: 3, SuccessCount: 0, TotalLatencyMs: 0},
+		okTs:   {TotalCount: 2, SuccessCount: 2, TotalLatencyMs: 300},
+	}
+
+	points := recentSeries(nil, probes, nil, nil, 3)
+	require.Len(t, points, 3)
+
+	byTs := map[int64]ModelRecentPoint{}
+	for _, point := range points {
+		byTs[point.Ts] = point
+	}
+
+	// Locate by absolute hour: recentSeries re-derives its own anchor, so an
+	// hour boundary crossing between fixture and call must not break ordering
+	// assumptions.
+	if p, ok := byTs[failTs]; ok {
+		assert.Equal(t, "upstream", p.Source, "probe hours surface as upstream evidence")
+		require.NotNil(t, p.SuccessRate)
+		assert.InDelta(t, 0, *p.SuccessRate, 0.001)
+		assert.Nil(t, p.LatencyMs, "outcomes without latency stay a gap")
+	}
+
+	p, ok := byTs[okTs]
+	require.True(t, ok, "the successful probe hour must be in the series")
+	assert.Equal(t, "upstream", p.Source)
+	require.NotNil(t, p.SuccessRate)
+	assert.InDelta(t, 100, *p.SuccessRate, 0.001)
+	require.NotNil(t, p.LatencyMs)
+	assert.Equal(t, int64(150), *p.LatencyMs, "latency averages only measured outcomes")
 }

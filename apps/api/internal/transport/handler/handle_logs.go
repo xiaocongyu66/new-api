@@ -264,6 +264,11 @@ func GetPerfMetricsSummary(c contract.Context) {
 	// buckets are gone because probe requests were removed.
 	endTs := time.Now().Unix()
 	startTs := endTs - int64(hours)*3600
+	probeBuckets, err := ops.LoadAvailabilityProbeBuckets(context.Background(), startTs, endTs, usage.GetBucketSeconds())
+	if err != nil {
+		common.SysError("load availability probe buckets for perf summary: " + err.Error())
+		probeBuckets = nil
+	}
 	upstreamPoints, err := ops.LoadUpstreamHealth(context.Background(), startTs, endTs, activeGroups)
 	if err != nil {
 		common.SysError("load upstream health for perf summary: " + err.Error())
@@ -287,7 +292,7 @@ func GetPerfMetricsSummary(c contract.Context) {
 			upstreamPoints = append(upstreamPoints, p)
 		}
 	}
-	result, err := usage.QuerySummaryAll(hours, activeGroups, upstreamPoints)
+	result, err := usage.QuerySummaryAll(hours, activeGroups, probeBuckets, upstreamPoints)
 	if err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{
 			"success": false,

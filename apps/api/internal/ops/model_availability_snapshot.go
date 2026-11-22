@@ -146,3 +146,48 @@ func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHea
 	}
 	return points, nil
 }
+
+// LoadAvailabilityProbeBuckets buckets the availability snapshots hourly per
+// model, for the model square's timeline: hours where the probe ran show the
+// real outcomes it observed (success ratio, latency from outcomes that carry
+// one), instead of a flat inherited rate.
+func LoadAvailabilityProbeBuckets(ctx context.Context, startTs, endTs, bucketSeconds int64) ([]usage.ProbeBucket, error) {
+	if bucketSeconds <= 0 {
+		bucketSeconds = 3600
+	}
+	var snaps []ModelAvailabilitySnapshot
+	if err := dbx.DB.WithContext(ctx).
+		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
+		Order("created_at ASC, id ASC").
+		Find(&snaps).Error; err != nil {
+		return nil, err
+	}
+
+	type bucketKey struct {
+		model string
+		ts    int64
+	}
+	buckets := map[bucketKey]*usage.ProbeBucket{}
+	order := make([]bucketKey, 0, len(snaps))
+	for _, snap := range snaps {
+		key := bucketKey{model: snap.Model, ts: snap.CreatedAt - snap.CreatedAt%bucketSeconds}
+		bucket, ok := buckets[key]
+		if !ok {
+			bucket = &usage.ProbeBucket{Model: snap.Model, BucketTs: key.ts}
+			buckets[key] = bucket
+			order = append(order, key)
+		}
+		bucket.TotalCount++
+		if snap.LatencyMs > 0 {
+			bucket.TotalLatencyMs += snap.LatencyMs
+		}
+		if snap.Success {
+			bucket.SuccessCount++
+		}
+	}
+	out := make([]usage.ProbeBucket, 0, len(order))
+	for _, key := range order {
+		out = append(out, *buckets[key])
+	}
+	return out, nil
+}
