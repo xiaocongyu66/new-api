@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
+import { Combobox } from '@/components/ui/combobox'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -33,7 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import { getAllModels } from '@/features/channels/api'
+import { getAllModels, getChannel } from '@/features/channels/api'
 import {
   deleteManualUpstreamPrice,
   getManualUpstreamPrices,
@@ -129,15 +130,36 @@ export function ManualUpstreamPrices() {
     [channelsData]
   )
 
-  const { data: modelsData } = useQuery({
+  // The channel's own model list is the authoritative set for hand-entered
+  // prices; a channel with no restriction (empty list) falls back to every
+  // model the site knows about.
+  const { data: channelDetail } = useQuery({
+    queryKey: ['channel-detail-for-manual-price', channelId],
+    queryFn: () => getChannel(channelId as number),
+    enabled: channelId !== null && channelId > 0,
+  })
+  const channelModels = useMemo(() => {
+    const raw = channelDetail?.data?.models ?? ''
+    return raw
+      .split(',')
+      .map((model) => model.trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b))
+  }, [channelDetail])
+
+  const { data: allModelsData } = useQuery({
     queryKey: ['all-models-for-manual-price'],
     queryFn: getAllModels,
+    enabled: channelModels.length === 0,
     staleTime: 5 * 60 * 1000,
   })
-  const modelOptions = useMemo(
-    () => (modelsData?.data ?? []).map((model) => model.id),
-    [modelsData]
-  )
+  const modelOptions = useMemo(() => {
+    const names =
+      channelModels.length > 0
+        ? channelModels
+        : (allModelsData?.data ?? []).map((model) => model.id)
+    return names.map((name) => ({ value: name, label: name }))
+  }, [channelModels, allModelsData])
 
   const { data: manualData, isLoading } = useQuery({
     queryKey: ['manual-upstream-prices', channelId],
@@ -372,7 +394,10 @@ export function ManualUpstreamPrices() {
           </label>
           <Select
             value={channelId === null ? '' : String(channelId)}
-            onValueChange={(value) => setChannelId(Number(value))}
+            onValueChange={(value) => {
+              setChannelId(Number(value))
+              setModelName('')
+            }}
           >
             <SelectTrigger id='manual-channel' className='w-full sm:w-64'>
               <SelectValue>
@@ -402,19 +427,17 @@ export function ManualUpstreamPrices() {
           <label className='text-xs font-medium' htmlFor='manual-model'>
             {t('Model')}
           </label>
-          <Input
+          <Combobox
             id='manual-model'
-            list='manual-model-options'
-            className='w-full sm:w-64'
-            placeholder='gpt-4o'
+            options={modelOptions}
             value={modelName}
-            onChange={(event) => setModelName(event.target.value)}
+            onValueChange={(value) => setModelName(value ?? '')}
+            placeholder={t('Select a model')}
+            searchPlaceholder={t('Search model...')}
+            emptyText={t('No matching model found.')}
+            openOnFocus={false}
+            className='w-full sm:w-72'
           />
-          <datalist id='manual-model-options'>
-            {modelOptions.map((model) => (
-              <option key={model} value={model} />
-            ))}
-          </datalist>
         </div>
         {selectedChannel?.last_sync_status === 'error' && (
           <span className='text-muted-foreground max-w-md pb-2 text-xs'>

@@ -6581,6 +6581,9 @@
     "Billing expression": "Billing expression",
     "Expression is required": "Expression is required",
     "Prices must be non-negative numbers": "Prices must be non-negative numbers",
-    "Fluctuation alert threshold (%)": "Fluctuation alert threshold (%)"
+    "Fluctuation alert threshold (%)": "Fluctuation alert threshold (%)",
+    "Select a model": "Select a model",
+    "Search model...": "Search model...",
+    "No matching model found.": "No matching model found."
   }
 }

@@ -6586,6 +6586,9 @@
     "Billing expression": "計費表達式",
     "Expression is required": "請填寫表達式",
     "Prices must be non-negative numbers": "價格必須是非負數",
-    "Fluctuation alert threshold (%)": "波動閾值（%）"
+    "Fluctuation alert threshold (%)": "波動閾值（%）",
+    "Select a model": "選擇模型",
+    "Search model...": "搜尋模型...",
+    "No matching model found.": "沒有匹配的模型"
   }
 }
