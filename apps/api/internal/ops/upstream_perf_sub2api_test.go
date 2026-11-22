@@ -126,3 +126,45 @@ func TestFetchSub2APIPerfEndToEnd(t *testing.T) {
 	_, notDeclared := perf["not-declared"]
 	assert.False(t, notDeclared, "models this channel does not declare are skipped")
 }
+
+// TestFetchSub2APIPerfRefusesWithoutErrorLog 钉住诚实性契约：
+// 失败流水读不到时，无法区分「真的零失败」与「错误视图被关闭」，
+// 此时不能输出 100% 这样的伪造值，必须让该级失败以便回退到本地真实请求。
+func TestFetchSub2APIPerfRefusesWithoutErrorLog(t *testing.T) {
+	withAvailabilityDB(t)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"code":"OK","data":{"items":[
+			{"model":"m","duration_ms":1000,"first_token_ms":100,"created_at":"2026-11-22T10:05:00Z"}
+		],"total":1,"page":1,"page_size":100,"pages":1}}`))
+	})
+	// Error view disabled by the upstream admin.
+	mux.HandleFunc("/api/v1/usage/errors", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"code":"FORBIDDEN","message":"Error requests view is disabled"}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	fetchSetting := egress.GetFetchSetting()
+	original := *fetchSetting
+	t.Cleanup(func() { *fetchSetting = original })
+	fetchSetting.EnableSSRFProtection = true
+	fetchSetting.AllowPrivateIp = true
+	fetchSetting.AllowedPorts = nil
+
+	channel := &channelpkg.Channel{
+		Id: 9, Type: 1, Key: "sk-relay", Name: "x",
+		Models: "m", Status: common.ChannelStatusEnabled,
+		BaseURL: &[]string{srv.URL}[0],
+	}
+	settings := channel.GetOtherSettings()
+	settings.Sub2APIAccessToken = "tok"
+	channel.SetOtherSettings(settings)
+
+	perf, err := FetchSub2APIPerf(t.Context(), channel)
+	require.Error(t, err, "an unavailable error log must fail the tier, not fake 100%")
+	assert.Nil(t, perf)
+	assert.Contains(t, err.Error(), "error log unavailable")
+}

@@ -194,13 +194,14 @@ func fetchSub2APILogs(ctx context.Context, channel *channelpkg.Channel, base, to
 			base, page, pageSize, url.QueryEscape(startDate), url.QueryEscape(endDate))
 		body, err := upstreamGETWithToken(ctx, channel, target, token)
 		if err != nil {
-			// 错误视图可能被管理员关闭；缺失败数据时按只有成功的口径处理，
-			// 并由调用方在成功率上看到 100%（诚实：确实没有失败记录）。
-			break
+			// 失败流水是成功率的分母不可分割的一半。看不到失败记录时无法
+			// 区分「真的零失败」和「错误视图被关闭」，此时算出的成功率是
+			// 伪造的 100%。宁可让这一级失败、回退到本地真实请求，也不编造。
+			return nil, nil, fmt.Errorf("sub2api error log unavailable: %w", err)
 		}
 		var pageDoc sub2apiUsagePage[sub2apiErrorItem]
 		if err := common.Unmarshal(body, &pageDoc); err != nil {
-			break
+			return nil, nil, fmt.Errorf("unparseable sub2api error log: %w", err)
 		}
 		errItems = append(errItems, pageDoc.Data.Items...)
 		if page >= pageDoc.Data.Pages || len(pageDoc.Data.Items) == 0 {
