@@ -6573,6 +6573,7 @@
     "Last sync": "Last sync",
     "Select a channel": "Select a channel",
     "Manual prices cover upstreams that expose no /api/pricing endpoint. A fetched snapshot always wins over a manual entry.": "Manual prices cover upstreams that expose no /api/pricing endpoint. A fetched snapshot always wins over a manual entry.",
-    "Updated at": "Updated at"
+    "Updated at": "Updated at",
+    "Manual price": "Manual price"
   }
 }

@@ -6578,6 +6578,7 @@
     "Last sync": "上次同步",
     "Select a channel": "選擇渠道",
     "Manual prices cover upstreams that expose no /api/pricing endpoint. A fetched snapshot always wins over a manual entry.": "手工價格用於沒有 /api/pricing 介面的上游；一旦拉取到快照，快照優先於手工價格。",
-    "Updated at": "更新時間"
+    "Updated at": "更新時間",
+    "Manual price": "手工價格"
   }
 }

@@ -205,8 +205,15 @@ function ChannelTable({
           <span className='text-muted-foreground text-[11px]'>{channel.model_name}</span>
         </div>
         {priced ? (
-          <span className='text-muted-foreground shrink-0 text-[10px]'>
-            {billingLabel(channel, t)}
+          <span className='flex shrink-0 items-center gap-1.5 text-[10px]'>
+            <span className='text-muted-foreground'>
+              {billingLabel(channel, t)}
+            </span>
+            {channel.price_source === 'manual' && (
+              <span className='bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-medium'>
+                {t('Manual price')}
+              </span>
+            )}
           </span>
         ) : (
           <span className='shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400'>
