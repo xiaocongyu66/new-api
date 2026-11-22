@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -191,6 +192,26 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 		return nil, err
 	}
 	outcomes := latestProbeOutcomes(rows)
+
+	// 首选上游站自己的性能接口（new-api /api/perf-metrics/* 等）：这是上游
+	// 真实流量统计出的成功率与延迟，零推理消耗、也不是本地日志的回声。
+	// 上游没有该接口或取数失败时，退回日志推导。
+	for _, channel := range channels {
+		snap, err := ops.FetchUpstreamPerf(ctx, channel)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("channel %d upstream perf fetch skipped: %v", channel.Id, err))
+			continue
+		}
+		for modelName, entry := range snap.Models {
+			outcomes[probeUnitKey{ChannelId: channel.Id, Model: modelName}] = probeOutcome{
+				Success:    entry.SuccessRate >= 50,
+				LatencyMs:  entry.AvgLatency,
+				HasLatency: entry.AvgLatency > 0,
+				CreatedAt:  now,
+			}
+		}
+	}
+
 	byChannel := make(map[int][]probeUnitKey, len(channels))
 	for key := range outcomes {
 		byChannel[key.ChannelId] = append(byChannel[key.ChannelId], key)
