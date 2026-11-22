@@ -237,8 +237,8 @@ describe('model-square card upstream fallback', () => {
     }
 
     await clickAt(40)
-    expect(host.textContent).toContain('Upstream')
     expect(host.textContent).not.toContain('Probe')
+    expect(host.textContent).not.toContain('Upstream')
 
     await clickAt(201)
     expect(host.textContent).toContain('—')
@@ -273,8 +273,8 @@ describe('model-square card upstream rate without latency', () => {
     expect((path.match(/M/g) ?? []).length).toBe(2)
 
     const headline = host.querySelector<HTMLElement>('div.grid-cols-3')!
-    // Idle summary: no latency to show and the estimate is labelled upstream.
-    expect(headline.textContent).toContain('Upstream')
+    // Idle summary: no latency to show — it must read as a gap, not 0 ms.
+    expect(headline.textContent).toContain('—')
     expect(headline.textContent).not.toContain('ms')
 
     const chart = host.querySelector<SVGSVGElement>('svg[viewBox="0 0 400 96"]')!
@@ -300,11 +300,11 @@ describe('model-square card upstream rate without latency', () => {
     }
 
     await pinAt(147)
-    expect(headline.textContent).toContain('Upstream')
+    // Source labels are gone from the headline; only the metrics remain.
 
     await pinAt(255)
     // A gap shows '—' for both metrics and prints no unit beside either.
-    expect(headline.textContent).toContain('No data')
+    expect(headline.textContent).toContain('—')
     expect(headline.textContent).not.toContain('ms')
     expect(headline.textContent).not.toContain('%')
   })

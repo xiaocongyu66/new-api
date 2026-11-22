@@ -93,38 +93,8 @@ function niceCeil(value: number): number {
 // Compact source label reusing existing translations. Only real requests and
 // weighted upstream health feed the card; the old probe source is gone, so no
 // hour can be labelled as a probe. `No data` covers an empty hour.
-function sourceLabel(
-  source: ModelPerfTrendPoint['source'] | undefined,
-  t: (key: string) => string
-): string | null {
-  switch (source) {
-    case 'request':
-      return t('Request')
-    case 'request+upstream':
-      return `${t('Request')} + ${t('Upstream')}`
-    case 'upstream':
-      return t('Upstream')
-    case 'none':
-      return t('No data')
-    default:
-      return null
-  }
-}
+// Source labels removed: the hourly series no longer carries a source tag.
 
-// Compact source tag shown on an active or idle hour; `title` carries the
-// full label for combined sources. Plain request traffic needs no tag.
-function sourceTag(
-  source: ModelPerfTrendPoint['source'] | undefined,
-  t: (key: string) => string
-) {
-  const label = sourceLabel(source, t)
-  if (!label || source === 'request') return null
-  return (
-    <span className='text-muted-foreground/60 text-[9px]' title={label}>
-      {label}
-    </span>
-  )
-}
 /**
  * Mini combo chart for a model-square card: blue latency bars against the
  * left axis (seconds once the peak reaches one, milliseconds below that),
@@ -270,8 +240,6 @@ const MetricHeadline = memo(function MetricHeadline(props: {
   latencyWidth: string
   latencyUnit: LatencyUnit
   activePoint: ModelPerfTrendPoint | null
-  /** Source of the idle summary, shown when no hour is active. */
-  idleSource: ModelPerfTrendPoint['source']
   t: (key: string) => string
 }) {
   const {
@@ -280,7 +248,6 @@ const MetricHeadline = memo(function MetricHeadline(props: {
     latencyWidth,
     latencyUnit,
     activePoint,
-    idleSource,
     t,
   } = props
 
@@ -306,12 +273,10 @@ const MetricHeadline = memo(function MetricHeadline(props: {
             <span className='bg-foreground/10 text-foreground/80 rounded px-1 font-mono'>
               {formatHour(activePoint.ts)}
             </span>
-            {sourceTag(activePoint.source, t)}
           </span>
         ) : (
           <span className='text-muted-foreground/40 font-mono'>—</span>
         )}
-        {!activePoint && sourceTag(idleSource, t)}
       </span>
       <span className='flex min-w-0 items-baseline justify-end gap-1'>
         <span className='text-muted-foreground/55'>{t('Success rate')}</span>
@@ -653,8 +618,7 @@ function MetricRows(props: {
         latencyUnit={geometry.latencyUnit}
         activePoint={activePoint}
         t={t}
-        idleSource={perf.source}
-      />
+              />
 
       <MetricChart
         geometry={geometry}
