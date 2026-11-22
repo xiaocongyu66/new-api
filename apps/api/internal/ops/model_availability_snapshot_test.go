@@ -61,15 +61,20 @@ func TestLoadAvailabilitySnapshotsAsHealthUsesPublicAlias(t *testing.T) {
 	assert.InDelta(t, 62.5, points[0].Rate, 0.001)
 }
 
-func TestLoadAvailabilitySnapshotsAsHealthSkipsUnroutable(t *testing.T) {
+func TestLoadAvailabilitySnapshotsAsHealthKeepsUnroutedChannel(t *testing.T) {
 	withAvailabilityDB(t)
 	now := common.GetTimestamp()
 
-	snapshotRow(t, "orphan-model", 9, 80, now-60)
+	// Channels without static-weight routes still serve traffic; their
+	// snapshots must reach the card rate via a plain mean, not be dropped.
+	snapshotRow(t, "no-routes-model", 9, 80, now-60)
 
 	points, err := LoadAvailabilitySnapshotsAsHealth(t.Context())
 	require.NoError(t, err)
-	assert.Empty(t, points, "a model no route serves must not enter the card rate")
+	require.Len(t, points, 1)
+	assert.Equal(t, "no-routes-model", points[0].Model)
+	assert.InDelta(t, 80, points[0].Rate, 0.001)
+	assert.Zero(t, points[0].Weight, "no routes row means plain-mean weighting")
 }
 
 func TestTrimAvailabilityKeepsNewestPerUnit(t *testing.T) {

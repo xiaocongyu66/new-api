@@ -113,9 +113,11 @@ func trimModelAvailability() {
 }
 
 // LoadAvailabilitySnapshotsAsHealth turns the newest snapshot per
-// (channel, model) into upstream-health points, weighted by the channel's
-// static route weight. Units whose model never saw traffic inherit their
-// channel's aggregate, so every model on a serving channel stays charted.
+// (channel, model) into upstream-health points. Every unit on a serving
+// channel is returned — including models that never saw traffic, which
+// carry their channel's aggregate rate — so the model square stays fully
+// charted. Units on channels without static weights are averaged plainly
+// by WeightedRate.
 func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHealthPoint, error) {
 	cutoff := common.GetTimestamp() - modelAvailabilityTTL
 	var snaps []ModelAvailabilitySnapshot
@@ -126,33 +128,12 @@ func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHea
 		return nil, err
 	}
 
-	type healthRow struct {
-		ChannelId int
-		Model     string
-	}
-	var routes []healthRow
-	if err := dbx.DB.WithContext(ctx).Table("channel_model_routes AS r").
-		Select("r.channel_id, r.public_model_alias AS model").
-		Where("r.enabled = ?", true).
-		Group("r.channel_id, r.upstream_model").
-		Find(&routes).Error; err != nil {
-		return nil, err
-	}
-
-	routed := make(map[unitKey]struct{}, len(routes))
-	for _, r := range routes {
-		routed[unitKey{r.ChannelId, r.Model}] = struct{}{}
-	}
-
 	seen := make(map[unitKey]struct{}, len(snaps))
 	points := make([]usage.UpstreamHealthPoint, 0, len(snaps))
 	for _, snap := range snaps {
 		key := unitKey{snap.ChannelId, snap.Model}
 		if _, ok := seen[key]; ok {
 			continue // snapshots arrive newest-first; the first one wins
-		}
-		if _, ok := routed[key]; !ok {
-			continue // not routable: the model square never shows it
 		}
 		seen[key] = struct{}{}
 		points = append(points, usage.UpstreamHealthPoint{
