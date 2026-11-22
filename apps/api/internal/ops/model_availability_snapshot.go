@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/usage"
+	"gorm.io/gorm/clause"
 )
 
 // ModelAvailabilitySnapshot is one durable availability observation for a
@@ -24,16 +25,18 @@ import (
 //     table no matter how often probing runs.
 type ModelAvailabilitySnapshot struct {
 	Id        int64  `json:"id" gorm:"primaryKey"`
-	Model     string `json:"model" gorm:"size:255;index:idx_avail_model_created,priority:1"`
-	ChannelId int    `json:"channel_id" gorm:"index"`
-	Success   bool   `json:"success"`
-	// Rate is 0-100. Own-traffic snapshots carry 100/0; units whose channel
-	// has traffic but the model itself does not carry the channel aggregate.
+	Model     string `json:"model" gorm:"size:255;uniqueIndex:idx_avail_unit,priority:1"`
+	ChannelId int    `json:"channel_id" gorm:"uniqueIndex:idx_avail_unit,priority:2;index"`
+	// BucketTs is the upstream's hourly bucket this observation describes.
+	// It is the identity of a row together with (model, channel_id): a later
+	// probe run refreshes the same hour instead of appending a duplicate.
+	BucketTs int64 `json:"bucket_ts" gorm:"uniqueIndex:idx_avail_unit,priority:3;index"`
+	// Rate is 0-100, taken verbatim from the upstream's own statistics.
 	Rate      float64 `json:"rate"`
 	LatencyMs int64   `json:"latency_ms"`
 	TtftMs    *int64  `json:"ttft_ms"`
 	Source    string  `json:"source" gorm:"size:32"`
-	CreatedAt int64   `json:"created_at" gorm:"index:idx_avail_model_created,priority:2;index"`
+	CreatedAt int64   `json:"created_at" gorm:"index"`
 }
 
 func (ModelAvailabilitySnapshot) TableName() string { return "model_availability_snapshots" }
@@ -50,11 +53,16 @@ func init() {
 	dbx.RegisterMigrations(dbx.Migration{Model: &ModelAvailabilitySnapshot{}, Name: "ModelAvailabilitySnapshot"})
 }
 
-// PersistModelAvailability appends one snapshot per unit and then applies
-// retention. Best effort: a failure is logged and never breaks the probe run.
+// PersistModelAvailability upserts one row per (model, channel, hour) and then
+// applies retention. Re-probing the same hour refreshes its values instead of
+// appending a duplicate, so the table holds one row per hour, not one per run.
+// Best effort: a failure is logged and never breaks the probe run.
 func PersistModelAvailability(snapshots []ModelAvailabilitySnapshot) {
 	if len(snapshots) > 0 {
-		if err := dbx.DB.CreateInBatches(snapshots, 200).Error; err != nil {
+		if err := dbx.DB.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "model"}, {Name: "channel_id"}, {Name: "bucket_ts"}},
+			DoUpdates: clause.AssignmentColumns([]string{"rate", "latency_ms", "ttft_ms", "source", "created_at"}),
+		}).CreateInBatches(snapshots, 200).Error; err != nil {
 			common.SysError("availability snapshot persist failed: " + err.Error())
 		}
 	}
@@ -73,7 +81,7 @@ type unitKey struct {
 // modelAvailabilityPerModel rows per model.
 func trimModelAvailability() {
 	now := common.GetTimestamp()
-	if err := dbx.DB.Where("created_at < ?", now-modelAvailabilityTTL).
+	if err := dbx.DB.Where("bucket_ts < ?", now-modelAvailabilityTTL).
 		Delete(&ModelAvailabilitySnapshot{}).Error; err != nil {
 		common.SysError("availability snapshot expiry failed: " + err.Error())
 	}
@@ -88,7 +96,7 @@ func trimModelAvailability() {
 	var rows []snapshotRow
 	if err := dbx.DB.Model(&ModelAvailabilitySnapshot{}).
 		Select("id, model, channel_id").
-		Order("model ASC, channel_id ASC, created_at DESC, id DESC").
+		Order("model ASC, channel_id ASC, bucket_ts DESC, id DESC").
 		Find(&rows).Error; err != nil {
 		common.SysError("availability snapshot trim scan failed: " + err.Error())
 		return
@@ -153,8 +161,8 @@ func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHea
 	cutoff := common.GetTimestamp() - modelAvailabilityTTL
 	var snaps []ModelAvailabilitySnapshot
 	if err := dbx.DB.WithContext(ctx).
-		Where("created_at >= ?", cutoff).
-		Order("model ASC, created_at DESC, id DESC").
+		Where("bucket_ts >= ?", cutoff).
+		Order("model ASC, bucket_ts DESC, id DESC").
 		Find(&snaps).Error; err != nil {
 		return nil, err
 	}
@@ -177,7 +185,7 @@ func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHea
 			ChannelID:  snap.ChannelId,
 			Rate:       snap.Rate,
 			LatencyMs:  snap.LatencyMs,
-			ObservedAt: snap.CreatedAt,
+			ObservedAt: snap.BucketTs,
 			Weight:     weights[key],
 		})
 	}
@@ -198,10 +206,11 @@ func LoadAvailabilityProbeBuckets(ctx context.Context, startTs, endTs, bucketSec
 	if bucketSeconds <= 0 {
 		bucketSeconds = 3600
 	}
+	cutoff := startTs - startTs%bucketSeconds
 	var snaps []ModelAvailabilitySnapshot
 	if err := dbx.DB.WithContext(ctx).
-		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
-		Order("created_at ASC, id ASC").
+		Where("bucket_ts >= ? AND bucket_ts <= ?", cutoff, endTs).
+		Order("model ASC, channel_id ASC, bucket_ts ASC").
 		Find(&snaps).Error; err != nil {
 		return nil, err
 	}
@@ -214,80 +223,77 @@ func LoadAvailabilityProbeBuckets(ctx context.Context, startTs, endTs, bucketSec
 		return nil, err
 	}
 
-	// Group snapshots by (model, hour) in ONE pass. Within (model, hour,
-	// channel) the LAST row wins (ASC order = newest last).
-	type cell struct {
-		rate      float64
-		latencyMs int64
-	}
-	type cellKey struct {
-		model     string
-		channelId int
-	}
-	type modelHour struct {
+	// 同一模型同一小时、来自多个渠道的上游数据按 static weight 合成一个点。
+	type key struct {
 		model string
 		ts    int64
 	}
-	cells := make(map[modelHour]map[cellKey]cell)
-	order := make([]modelHour, 0)
-	seenHour := make(map[modelHour]struct{})
+	groups := make(map[key][]ModelAvailabilitySnapshot, len(snaps))
+	order := make([]key, 0, len(snaps))
 	for _, snap := range snaps {
-		mh := modelHour{snap.Model, snap.CreatedAt - snap.CreatedAt%bucketSeconds}
-		if _, ok := seenHour[mh]; !ok {
-			seenHour[mh] = struct{}{}
-			order = append(order, mh)
+		k := key{snap.Model, snap.BucketTs}
+		if _, ok := groups[k]; !ok {
+			order = append(order, k)
 		}
-		if cells[mh] == nil {
-			cells[mh] = make(map[cellKey]cell)
-		}
-		cells[mh][cellKey{snap.Model, snap.ChannelId}] = cell{
-			rate: snap.Rate, latencyMs: snap.LatencyMs,
-		}
+		groups[k] = append(groups[k], snap)
 	}
 
 	out := make([]usage.ProbeBucket, 0, len(order))
-	for _, mh := range order {
-		var wSum, weightedRate, weightedLat, latWeight float64
-		var plainRate, plainLat float64
-		latCount, plainCount := 0, 0
-		for key, c := range cells[mh] {
-			w := weights[unitKey{key.channelId, key.model}]
+	for _, k := range order {
+		rows := groups[k]
+		var wSum, weightedRate, weightedLat, latWeight, weightedTtft, ttftWeight float64
+		var plainRate, plainLat, plainTtft float64
+		latCount, ttftCount := 0, 0
+		for _, row := range rows {
+			w := weights[unitKey{row.ChannelId, row.Model}]
 			wSum += w
-			weightedRate += c.rate * w
-			plainRate += c.rate
-			plainCount++
-			if c.latencyMs > 0 {
-				weightedLat += float64(c.latencyMs) * w
+			weightedRate += row.Rate * w
+			plainRate += row.Rate
+			if row.LatencyMs > 0 {
+				weightedLat += float64(row.LatencyMs) * w
 				latWeight += w
-				plainLat += float64(c.latencyMs)
+				plainLat += float64(row.LatencyMs)
 				latCount++
 			}
+			if row.TtftMs != nil && *row.TtftMs > 0 {
+				weightedTtft += float64(*row.TtftMs) * w
+				ttftWeight += w
+				plainTtft += float64(*row.TtftMs)
+				ttftCount++
+			}
 		}
-		var rate, latency float64
+		var rate, latency, ttft float64
 		if wSum > 0 {
 			rate = weightedRate / wSum
 			if latWeight > 0 {
 				latency = weightedLat / latWeight
 			}
+			if ttftWeight > 0 {
+				ttft = weightedTtft / ttftWeight
+			}
 		} else {
-			// No channel has a configured weight: plain mean.
-			if plainCount > 0 {
-				rate = plainRate / float64(plainCount)
+			if n := len(rows); n > 0 {
+				rate = plainRate / float64(n)
 			}
 			if latCount > 0 {
 				latency = plainLat / float64(latCount)
 			}
+			if ttftCount > 0 {
+				ttft = plainTtft / float64(ttftCount)
+			}
 		}
-		// Encode the weighted ratio into SuccessCount/TotalCount so the reader
-		// gets a plain ratio; latency is carried directly (no overflow).
 		const scale = 1_000_000
-		out = append(out, usage.ProbeBucket{
-			Model:        mh.model,
-			BucketTs:     mh.ts,
+		bucket := usage.ProbeBucket{
+			Model:        k.model,
+			BucketTs:     k.ts,
 			TotalCount:   scale,
 			SuccessCount: int64(math.Round(rate / 100 * scale)),
 			AvgLatencyMs: int64(math.Round(latency)),
-		})
+		}
+		if ttft > 0 {
+			bucket.AvgTtftMs = int64(math.Round(ttft))
+		}
+		out = append(out, bucket)
 	}
 	return out, nil
 }

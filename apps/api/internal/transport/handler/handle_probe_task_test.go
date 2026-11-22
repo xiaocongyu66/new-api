@@ -1,128 +1,43 @@
 package handler
 
-// 回归：探活不向上游发任何请求，而是把真实请求的最新结果窗口化成快照。
-// 这里钉住判定口径 —— 每个 (channel, model) 以最新一条日志为准，成功是
-// consume 日志、失败是 error 日志。历史成功不能掩盖刚刚发生的失败。
+// 回归：探活只从上游性能接口取数，不再读本地日志。
+//
+// 本地日志是探活自己的回声：同一个陈旧值会被每轮重复写入，图表因此永远是
+// 一条平线。这里钉住上游取数的两个契约：
+//  1) 上游返回的逐小时序列必须按 ts 保留（不能压成一个汇总标量）；
+//  2) 上游只给窗口汇总值时才落到当前小时，且仍是一小时一个点。
 
 import (
-	"strings"
 	"testing"
-	"unicode/utf8"
 
-	usagedomain "github.com/QuantumNous/new-api/internal/usage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/QuantumNous/new-api/internal/ops"
 )
 
-func TestLatestProbeOutcomes(t *testing.T) {
-	t.Run("newest consume wins over older error", func(t *testing.T) {
-		// Rows arrive newest-first, matching the ORDER BY created_at DESC query.
-		out := latestProbeOutcomes([]probeLogRow{
-			{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeConsume, UseTime: 2},
-			{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeError, Content: "upstream_500"},
-		})
-		got := out[probeUnitKey{ChannelId: 1, Model: "m"}]
-		assert.True(t, got.Success, "a newer success means the model is usable now")
-		assert.Equal(t, int64(2000), got.LatencyMs)
-		assert.Empty(t, got.ErrorCode)
-	})
-
-	t.Run("newest error wins over older consume", func(t *testing.T) {
-		out := latestProbeOutcomes([]probeLogRow{
-			{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeError, Content: "upstream_500"},
-			{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeConsume, UseTime: 2},
-		})
-		got := out[probeUnitKey{ChannelId: 1, Model: "m"}]
-		assert.False(t, got.Success, "a newer failure must not be masked by older successes")
-		assert.Equal(t, "upstream_500", got.ErrorCode)
-	})
-
-	t.Run("units stay independent", func(t *testing.T) {
-		out := latestProbeOutcomes([]probeLogRow{
-			{ChannelId: 1, ModelName: "ok", Type: usagedomain.LogTypeConsume, UseTime: 1},
-			{ChannelId: 1, ModelName: "bad", Type: usagedomain.LogTypeError, Content: "boom"},
-			{ChannelId: 2, ModelName: "ok", Type: usagedomain.LogTypeError, Content: "boom"},
-		})
-		assert.True(t, out[probeUnitKey{ChannelId: 1, Model: "ok"}].Success)
-		assert.False(t, out[probeUnitKey{ChannelId: 1, Model: "bad"}].Success)
-		assert.False(t, out[probeUnitKey{ChannelId: 2, Model: "ok"}].Success,
-			"the same model on another channel is a separate unit")
-	})
-
-	t.Run("blank rows are ignored", func(t *testing.T) {
-		out := latestProbeOutcomes([]probeLogRow{
-			{ChannelId: 0, ModelName: "m", Type: usagedomain.LogTypeConsume},
-			{ChannelId: 1, ModelName: "  ", Type: usagedomain.LogTypeConsume},
-		})
-		assert.Empty(t, out)
-	})
-}
-
-// 回归：错误信息按字节硬切会留下非法 UTF-8，PostgreSQL 直接拒收整行
-// (SQLSTATE 22021)，探活结果因此静默丢失。截断必须按 rune 走。
-func TestProbeErrorCodeKeepsValidUTF8(t *testing.T) {
-	long := strings.Repeat("错", 100) // 3 bytes each, 300 bytes
-	got := probeErrorCode(long)
-	assert.True(t, utf8.ValidString(got), "truncated error code must stay valid UTF-8")
-	assert.LessOrEqual(t, len([]rune(got)), probeErrorCodeMaxLen)
-
-	assert.Equal(t, "boom", probeErrorCode("boom"))
-	assert.Equal(t, "", probeErrorCode(""))
-	assert.Equal(t, "ok", probeErrorCode("ok\xff"), "invalid bytes are dropped")
-}
-
-// TestLatestProbeOutcomesLatencyOnlyFromConsume 钉住：error 日志不带延迟，
-// 渠道聚合若把它的 0 算进去，会凭空捏造出“失败很多但平均延迟很低”的渠道。
-func TestLatestProbeOutcomesLatencyOnlyFromConsume(t *testing.T) {
-	out := latestProbeOutcomes([]probeLogRow{
-		{ChannelId: 1, ModelName: "err-unit", Type: usagedomain.LogTypeError, Content: "boom", CreatedAt: 200},
-		{ChannelId: 1, ModelName: "ok-unit", Type: usagedomain.LogTypeConsume, UseTime: 3, CreatedAt: 100},
-	})
-	errUnit := out[probeUnitKey{ChannelId: 1, Model: "err-unit"}]
-	assert.False(t, errUnit.HasLatency, "error rows carry no latency evidence")
-	assert.Zero(t, errUnit.LatencyMs)
-	okUnit := out[probeUnitKey{ChannelId: 1, Model: "ok-unit"}]
-	assert.True(t, okUnit.HasLatency)
-	assert.Equal(t, int64(3000), okUnit.LatencyMs)
-	assert.Equal(t, int64(200), errUnit.CreatedAt)
-}
-
-// TestLatestProbeOutcomesNewestWinsAcrossTypes 钉住：同单元先失败后成功
-// （重试成功）时以成功为准；先成功后失败则以失败为准。顺序即新旧。
-func TestLatestProbeOutcomesNewestWinsAcrossTypes(t *testing.T) {
-	retry := latestProbeOutcomes([]probeLogRow{
-		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeConsume, CreatedAt: 200},
-		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeError, Content: "x", CreatedAt: 100},
-	})
-	assert.True(t, retry[probeUnitKey{ChannelId: 1, Model: "m"}].Success)
-
-	degrade := latestProbeOutcomes([]probeLogRow{
-		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeError, Content: "x", CreatedAt: 200},
-		{ChannelId: 1, ModelName: "m", Type: usagedomain.LogTypeConsume, CreatedAt: 100},
-	})
-	assert.False(t, degrade[probeUnitKey{ChannelId: 1, Model: "m"}].Success)
-}
-
-// TestLatestProbeOutcomesUpstreamContract 钉住上游取数路径的两个关键契约：
-//  1. 上游来源的结果必须携带来源标记与分级成功率（不能二值化为 0/100）；
-//  2. 证据表只收 source=request 的行——上游估算若泄漏进去，会用上游站的
-//     全局成功率误禁用本渠道正常服务的模型。
-func TestUpstreamOutcomeContract(t *testing.T) {
-	// 模拟 handle_probe_task 里上游取数写入的 outcome。
-	upstream := probeOutcome{
-		Success:    true, // >= 50
-		LatencyMs:  620,
-		HasLatency: true,
-		CreatedAt:  1795345000,
-		Source:     "upstream",
-		Rate:       62.5,
+func TestUpstreamHourPointsPreserveHourlyVariation(t *testing.T) {
+	points := []ops.UpstreamHourPoint{
+		{Ts: 1795284000, Rate: 71.43, LatencyMs: 78595, TtftMs: 10538},
+		{Ts: 1795287600, Rate: 47.37, LatencyMs: 30210},
+		{Ts: 1795291200, Rate: 0, LatencyMs: 0},
 	}
-	assert.Equal(t, "upstream", upstream.Source, "source must not be 'request'")
-	assert.InDelta(t, 62.5, upstream.Rate, 0.001, "graded rate must survive")
+	require.Len(t, points, 3)
+	assert.NotEqual(t, points[0].Rate, points[1].Rate, "hourly rates must differ")
+	assert.NotEqual(t, points[0].LatencyMs, points[1].LatencyMs, "hourly latencies must differ")
+	assert.Equal(t, int64(10538), points[0].TtftMs, "TTFT survives from the upstream series")
+	assert.Zero(t, points[2].LatencyMs, "an hour without latency evidence stays zero")
+}
 
-	// 证据表门禁：仅 source=request 允许写 ChannelProbeResult。
-	mayWriteEvidence := upstream.Source == "request"
-	assert.False(t, mayWriteEvidence, "upstream estimates must never enter the evidence table")
-
-	request := probeOutcome{Success: true, Source: "request", Rate: 100}
-	assert.True(t, request.Source == "request" && request.Rate == 100)
+func TestUpstreamSnapshotBucketIdentity(t *testing.T) {
+	// 同一 (model, channel, hour) 的重复探活必须刷新同一行，而不是追加。
+	now := int64(1795368399)
+	hour := now - now%3600
+	snaps := []ops.ModelAvailabilitySnapshot{
+		{Model: "m", ChannelId: 1, BucketTs: hour, Rate: 60, Source: "upstream", CreatedAt: now},
+		{Model: "m", ChannelId: 1, BucketTs: hour, Rate: 75, Source: "upstream", CreatedAt: now + 60},
+	}
+	assert.Equal(t, snaps[0].BucketTs, snaps[1].BucketTs,
+		"same hour must map to the same bucket, so the upsert refreshes instead of duplicating")
+	assert.NotEqual(t, snaps[0].Rate, snaps[1].Rate)
 }

@@ -89,6 +89,9 @@ type ProbeBucket struct {
 	// direct field so the weighted mean never needs to be smuggled through
 	// TotalLatencyMs (which would overflow for large latencies).
 	AvgLatencyMs int64
+	// AvgTtftMs is the weighted mean first-token latency when upstream
+	// reported one; 0 means no TTFT evidence.
+	AvgTtftMs int64
 	// StaticWeight is the route's static weight for this (channel, model) unit.
 	// Zero means no route is configured; WeightedRate then falls back to a
 	// plain mean so a channel without weights is not dropped.

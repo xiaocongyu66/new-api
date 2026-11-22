@@ -33,11 +33,11 @@ func withAvailabilityDB(t *testing.T) {
 	t.Cleanup(func() { dbx.DB = previousDB })
 }
 
-func snapshotRow(t *testing.T, model string, channelId int, rate float64, createdAt int64) {
+func snapshotRow(t *testing.T, model string, channelId int, rate float64, bucketTs int64) {
 	t.Helper()
 	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
-		Model: model, ChannelId: channelId, Success: rate >= 50,
-		Rate: rate, LatencyMs: 100, Source: "channel", CreatedAt: createdAt,
+		Model: model, ChannelId: channelId, BucketTs: bucketTs,
+		Rate: rate, LatencyMs: 100, Source: "upstream", CreatedAt: bucketTs,
 	}).Error)
 }
 
@@ -161,12 +161,12 @@ func TestLoadAvailabilityProbeBucketsWeightedByStaticRoute(t *testing.T) {
 		UpstreamModel: "m", StaticWeight: 3, Enabled: true,
 	}).Error)
 	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
-		Model: "m", ChannelId: 1, Success: true, Rate: 100,
-		LatencyMs: 200, Source: "request", CreatedAt: hour + 60,
+		Model: "m", ChannelId: 1, Rate: 100,
+		LatencyMs: 200, Source: "request", BucketTs: hour, CreatedAt: hour,
 	}).Error)
 	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
-		Model: "m", ChannelId: 2, Success: false, Rate: 0,
-		LatencyMs: 600, Source: "request", CreatedAt: hour + 120,
+		Model: "m", ChannelId: 2, Rate: 0,
+		LatencyMs: 600, Source: "request", BucketTs: hour, CreatedAt: hour,
 	}).Error)
 
 	buckets, err := LoadAvailabilityProbeBuckets(t.Context(), hour, hour+3600, 3600)
@@ -195,12 +195,12 @@ func TestLoadAvailabilityProbeBucketsLatencyIgnoresWeightlessSamples(t *testing.
 	}).Error)
 	// Channel 1 succeeded at 200ms; channel 2 failed (no latency evidence).
 	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
-		Model: "m", ChannelId: 1, Success: true, Rate: 100,
-		LatencyMs: 200, Source: "request", CreatedAt: hour + 60,
+		Model: "m", ChannelId: 1, Rate: 100,
+		LatencyMs: 200, Source: "request", BucketTs: hour, CreatedAt: hour,
 	}).Error)
 	require.NoError(t, dbx.DB.Create(&ModelAvailabilitySnapshot{
-		Model: "m", ChannelId: 2, Success: false, Rate: 0,
-		LatencyMs: 0, Source: "request", CreatedAt: hour + 120,
+		Model: "m", ChannelId: 2, Rate: 0,
+		LatencyMs: 0, Source: "request", BucketTs: hour, CreatedAt: hour,
 	}).Error)
 
 	buckets, err := LoadAvailabilityProbeBuckets(t.Context(), hour, hour+3600, 3600)
