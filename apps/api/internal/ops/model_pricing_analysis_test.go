@@ -236,9 +236,9 @@ func TestManualPriceFieldsShape(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, cacheExpr, "cr * 0.3")
 	assert.Contains(t, cacheExpr, "cc * 3.75")
-	// 1k prompt + 250 completion + 2k cache read + 400 cache write, in USD.
+	// Claude semantics: prompt tokens are text-only, so cache classes add on top.
 	want := (3*1000 + 15*250 + 0.3*2000 + 3.75*400) / 1e6
-	got := evalUsdWithTokens(cacheExpr, 1000, 250, 1000, 2000, 400)
+	got := evalUsdWithTokens(cacheExpr, 1000, 250, 1000, 2000, 400, true)
 	require.NotNil(t, got)
 	assert.InDelta(t, want, *got, 1e-12)
 
@@ -249,6 +249,30 @@ func TestManualPriceFieldsShape(t *testing.T) {
 	})
 	assert.Equal(t, `tier("base", p * 1 + c * 2)`, exprMode[billing.BillingExprField])
 	assert.Equal(t, billing.BillingModeTieredExpr, exprMode[billing.BillingModeField])
+}
+
+// TestCacheTokensAreNotDoubleBilled pins the normalization the live billing
+// path applies: GPT-format prompt tokens already include cache traffic, so a
+// cache-priced expression must bill the remainder at the input rate, not the
+// whole prompt plus the cache tokens.
+func TestCacheTokensAreNotDoubleBilled(t *testing.T) {
+	const expr = `tier("base", p * 3 + c * 15 + cr * 0.3)`
+
+	// GPT semantics: prompt 1000 already contains the 800 cached tokens.
+	gpt := evalUsdWithTokens(expr, 1000, 250, 1000, 800, 0, false)
+	require.NotNil(t, gpt)
+	assert.InDelta(t, (200*3+250*15+800*0.3)/1e6, *gpt, 1e-12)
+
+	// Claude semantics: prompt is text-only, cache tokens are additive.
+	claude := evalUsdWithTokens(expr, 1000, 250, 1800, 800, 0, true)
+	require.NotNil(t, claude)
+	assert.InDelta(t, (1000*3+250*15+800*0.3)/1e6, *claude, 1e-12)
+
+	// An expression that never mentions cr keeps the full prompt: nothing is
+	// billed twice and nothing is dropped.
+	plain := evalUsdWithTokens(`tier("base", p * 3 + c * 15)`, 1000, 250, 1000, 800, 0, false)
+	require.NotNil(t, plain)
+	assert.InDelta(t, (1000*3+250*15)/1e6, *plain, 1e-12)
 }
 
 // TestBuildChannelEntryFallsBackToManualPrice pins the precedence rule: a
@@ -263,7 +287,7 @@ func TestBuildChannelEntryFallsBackToManualPrice(t *testing.T) {
 		}),
 	}
 
-	entry, _, priced := buildChannelEntry("gpt-4o", ch, ug, nil, nil, manual, []int{10}, 10, nil)
+	entry, _, priced := buildChannelEntry("gpt-4o", ch, ug, nil, nil, manual, nil, []int{10}, 10, nil)
 	assert.True(t, priced)
 	assert.Equal(t, "manual", entry.PriceSource)
 	assert.Equal(t, "per_call", entry.PriceMode)
@@ -277,7 +301,13 @@ func TestBuildChannelEntryFallsBackToManualPrice(t *testing.T) {
 			}),
 		},
 	}
-	entry, _, priced = buildChannelEntry("gpt-4o", ch, ug, nil, snapshots, manual, []int{10}, 10, nil)
+	entry, _, priced = buildChannelEntry("gpt-4o", ch, ug, nil, snapshots, manual, nil, []int{10}, 10, nil)
 	assert.True(t, priced)
 	assert.Equal(t, "snapshot", entry.PriceSource)
+
+	// A failed last fetch means the stored snapshot is stale: the operator's
+	// manual entry takes over instead of being shadowed forever.
+	entry, _, priced = buildChannelEntry("gpt-4o", ch, ug, nil, snapshots, manual, map[int]bool{7: true}, []int{10}, 10, nil)
+	assert.True(t, priced)
+	assert.Equal(t, "manual", entry.PriceSource)
 }

@@ -277,7 +277,8 @@ export function PricingAnalysisTable({
 
   return (
     <div className='flex h-full min-h-0 flex-col gap-4'>
-      <div className='flex shrink-0 flex-col gap-2 lg:flex-row lg:items-center'>
+      {/* 窄屏三个筛选器并成一行（三列），给下方表格让出空间 */}
+      <div className='grid shrink-0 grid-cols-3 items-center gap-2 lg:flex lg:flex-row lg:gap-2'>
         <Select
           items={[
             { value: '0', label: t('All vendors') },
@@ -328,11 +329,8 @@ export function PricingAnalysisTable({
           </SelectContent>
         </Select>
 
-        <div className='flex flex-col gap-1 lg:block'>
-          {/* 窄屏三个筛选器只剩数值看不出含义，给阈值补一个可见标签 */}
-          <span className='text-muted-foreground text-xs lg:hidden'>
-            {t('Fluctuation alert threshold (%)')}
-          </span>
+        {/* 窄屏并入同一行后不再放独立标签：下方波动提醒区已说明含义 */}
+        <div>
           <Input
             type='number'
             min={0}

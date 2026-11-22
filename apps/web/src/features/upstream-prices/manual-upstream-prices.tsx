@@ -22,6 +22,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { Combobox } from '@/components/ui/combobox'
 import { Button } from '@/components/ui/button'
@@ -108,7 +109,12 @@ function inputPriceCell(row: ManualUpstreamPrice): string {
   return '—'
 }
 
-export function ManualUpstreamPrices() {
+export function ManualUpstreamPrices({
+  onPricesChanged,
+}: {
+  /** Called after a create/delete so the comparison tab can refetch. */
+  onPricesChanged?: () => void
+} = {}) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [channelId, setChannelId] = useState<number | null>(null)
@@ -119,8 +125,11 @@ export function ManualUpstreamPrices() {
   const [priceCacheRead, setPriceCacheRead] = useState('')
   const [priceCacheWrite, setPriceCacheWrite] = useState('')
   const [expr, setExpr] = useState('')
+  // 删除是破坏性且不可撤销的操作，先确认再发请求。
+  const [pendingDelete, setPendingDelete] =
+    useState<ManualUpstreamPrice | null>(null)
 
-  const { data: channelsData } = useQuery({
+  const { data: channelsData, isError: channelsError } = useQuery({
     queryKey: ['upstream-channels'],
     queryFn: getUpstreamChannels,
   })
@@ -162,7 +171,7 @@ export function ManualUpstreamPrices() {
     return names.map((name) => ({ value: name, label: name }))
   }, [channelModels, allModelsData])
 
-  const { data: manualData, isLoading } = useQuery({
+  const { data: manualData, isLoading, isError: manualError } = useQuery({
     queryKey: ['manual-upstream-prices', channelId],
     queryFn: () => getManualUpstreamPrices(channelId as number),
     enabled: channelId !== null,
@@ -173,7 +182,8 @@ export function ManualUpstreamPrices() {
     queryClient.invalidateQueries({
       queryKey: ['manual-upstream-prices', channelId],
     })
-    queryClient.invalidateQueries({ queryKey: ['pricing-analysis'] })
+    // 分析结果由「盈利对比」页签自己持有，这里只发信号让它重新拉取。
+    onPricesChanged?.()
   }
 
   const saveMutation = useMutation({
@@ -261,6 +271,10 @@ export function ManualUpstreamPrices() {
       toast.error(t('Prices must be non-negative numbers'))
       return
     }
+    if (isPerToken && input === 0 && output === 0 && cacheRead === 0 && cacheWrite === 0) {
+      toast.error(t('Per-token pricing needs at least one price'))
+      return
+    }
     saveMutation.mutate({
       channel_id: channelId,
       model_name: name,
@@ -288,6 +302,8 @@ export function ManualUpstreamPrices() {
     body = emptyRow(t('Select a channel first'))
   } else if (isLoading) {
     body = emptyRow(t('Loading...'))
+  } else if (manualError) {
+    body = emptyRow(t('Failed to load manual prices'))
   } else if (rows.length === 0) {
     body = emptyRow(t('No manual prices for this channel'))
   } else {
@@ -318,7 +334,7 @@ export function ManualUpstreamPrices() {
             size='sm'
             variant='ghost'
             aria-label={t('Delete')}
-            onClick={() => deleteMutation.mutate(row)}
+            onClick={() => setPendingDelete(row)}
           >
             <Trash2 className='h-4 w-4' />
           </Button>
@@ -338,6 +354,8 @@ export function ManualUpstreamPrices() {
     mobileList = mobileEmpty(t('Select a channel first'))
   } else if (isLoading) {
     mobileList = mobileEmpty(t('Loading...'))
+  } else if (manualError) {
+    mobileList = mobileEmpty(t('Failed to load manual prices'))
   } else if (rows.length === 0) {
     mobileList = mobileEmpty(t('No manual prices for this channel'))
   } else {
@@ -354,7 +372,7 @@ export function ManualUpstreamPrices() {
             size='sm'
             variant='ghost'
             aria-label={t('Delete')}
-            onClick={() => deleteMutation.mutate(row)}
+            onClick={() => setPendingDelete(row)}
           >
             <Trash2 className='h-4 w-4' />
           </Button>
@@ -410,7 +428,7 @@ export function ManualUpstreamPrices() {
                 <SelectItem key={channel.id} value={String(channel.id)}>
                   <span className='flex items-center gap-2'>
                     <span className='truncate'>{channel.name}</span>
-                    {channel.last_sync_status === 'error' && (
+                    {channel.last_sync_status === 'no_pricing' && (
                       <StatusBadge
                         label={t('No pricing API')}
                         variant='danger'
@@ -440,7 +458,12 @@ export function ManualUpstreamPrices() {
             className='w-full sm:w-72'
           />
         </div>
-        {selectedChannel?.last_sync_status === 'error' && (
+        {channelsError && (
+          <span className='text-xs text-red-600 dark:text-red-400'>
+            {t('Failed to load channels')}
+          </span>
+        )}
+        {selectedChannel?.last_sync_status === 'no_pricing' && (
           <span className='text-muted-foreground max-w-md pb-2 text-xs'>
             {selectedChannel.last_sync_error}
           </span>
@@ -455,7 +478,16 @@ export function ManualUpstreamPrices() {
           </label>
           <Select
             value={mode}
-            onValueChange={(value) => setMode(value as ManualUpstreamPriceMode)}
+            onValueChange={(value) => {
+              // 按次是美元/次，按量是美元/百万 tokens：换单位必须清空旧数字，
+              // 否则 0.5 会被当成另一种单位写进库，差 6 个数量级。
+              setMode(value as ManualUpstreamPriceMode)
+              setPriceIn('')
+              setPriceOut('')
+              setPriceCacheRead('')
+              setPriceCacheWrite('')
+              setExpr('')
+            }}
           >
             <SelectTrigger id='manual-mode' className='w-full sm:w-40'>
               <SelectValue>{t(MODE_LABELS[mode])}</SelectValue>
@@ -586,6 +618,24 @@ export function ManualUpstreamPrices() {
           <tbody>{body}</tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+        title={t('Delete manual price?')}
+        desc={t(
+          'This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered.',
+          { model: pendingDelete?.model_name ?? '' }
+        )}
+        destructive
+        isLoading={deleteMutation.isPending}
+        handleConfirm={() => {
+          if (pendingDelete) deleteMutation.mutate(pendingDelete)
+          setPendingDelete(null)
+        }}
+      />
     </div>
   )
 }

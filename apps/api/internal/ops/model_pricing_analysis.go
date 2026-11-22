@@ -162,6 +162,14 @@ func PricingAnalysis(c contract.Context) {
 	}
 	tierUsageMap := tierUsageByWindow(allMatched, windows, start, end)
 	manualFields := loadManualUpstreamFields()
+	// A channel whose latest /fetch failed has no trustworthy snapshot, so a
+	// manual price takes over for it.
+	fetchFailed := make(map[int]bool)
+	for id, status := range loadUpstreamSyncStatuses() {
+		if status.Status != "" && status.Status != syncKindSuccess {
+			fetchFailed[id] = true
+		}
+	}
 
 	rows := make([]dto.AnalysisRow, 0, len(models))
 	for i, mm := range models {
@@ -206,7 +214,7 @@ func PricingAnalysis(c contract.Context) {
 				if ug.Requests == 0 && ug.Tokens == 0 {
 					continue
 				}
-				entry, chCost, priced := buildChannelEntry(m, ch, ug, localFields, snapshotBySource, manualFields, windows, canonicalWindow, tierUsageMap)
+				entry, chCost, priced := buildChannelEntry(m, ch, ug, localFields, snapshotBySource, manualFields, fetchFailed, windows, canonicalWindow, tierUsageMap)
 				chEntries = append(chEntries, entry)
 				if priced {
 					cost += chCost
@@ -254,7 +262,7 @@ func PricingAnalysis(c contract.Context) {
 			if ug.Requests == 0 && ug.Tokens == 0 {
 				continue
 			}
-			entry, chCost, priced := buildChannelEntry(name, ch, ug, localFields, snapshotBySource, manualFields, windows, canonicalWindow, tierUsageMap)
+			entry, chCost, priced := buildChannelEntry(name, ch, ug, localFields, snapshotBySource, manualFields, fetchFailed, windows, canonicalWindow, tierUsageMap)
 			chEntries = append(chEntries, entry)
 			if priced {
 				cost += chCost
@@ -317,7 +325,7 @@ func aggregateChannelLogs(expr string, tier map[[3]any][]pricingSample, channelI
 	for _, w := range windows {
 		for _, s := range tier[[3]any{int64(channelID), modelName, w}] {
 			found = true
-			if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen, s.CacheRead, s.CacheWrite); usd != nil {
+			if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen, s.CacheRead, s.CacheWrite, s.ClaudeSemantic); usd != nil {
 				st.Cost += *usd
 			}
 			if s.BillingSource == billingSourceSubscription {
@@ -437,18 +445,21 @@ func upstreamGroupMultiplier(fields map[string]any, siteGroupRatio map[string]fl
 // representative-window estimate fallback when the range has no logs.
 // priced=false when the channel carries no upstream price, so callers never
 // mix borrowed reference prices into their cost sums.
-func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localFields map[string]map[string]any, snapshotBySource map[string]map[string]map[string]any, manualFields map[[2]any]map[string]any, windows []int, canonicalWindow int, tierUsageMap map[[3]any][]pricingSample) (dto.AnalysisChannel, float64, bool) {
+func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localFields map[string]map[string]any, snapshotBySource map[string]map[string]map[string]any, manualFields map[[2]any]map[string]any, fetchFailed map[int]bool, windows []int, canonicalWindow int, tierUsageMap map[[3]any][]pricingSample) (dto.AnalysisChannel, float64, bool) {
 	revenue := float64(ug.Quota) / float64(common.QuotaPerUnit)
 	sourceKey := channelSourceKey(ch.ChannelName, ch.ChannelID)
 	upFields := resolveUpstreamFields(modelName, snapshotBySource[sourceKey], ch.ModelMapping)
 	// A channel whose upstream exposes no /api/pricing can still be compared
-	// against an operator-entered price. A fetched snapshot always wins.
+	// against an operator-entered price. A fresh snapshot wins, but an old one
+	// must not shadow the operator's entry after the upstream stopped serving
+	// /api/pricing: the last fetch outcome decides whether it is still live.
+	manual := manualFields[manualPriceKey(ch.ChannelID, modelName)]
 	priceSource := ""
-	if len(upFields) > 0 {
-		priceSource = "snapshot"
-	} else if manual := manualFields[manualPriceKey(ch.ChannelID, modelName)]; len(manual) > 0 {
+	if len(manual) > 0 && (len(upFields) == 0 || fetchFailed[ch.ChannelID]) {
 		upFields = manual
 		priceSource = "manual"
+	} else if len(upFields) > 0 {
+		priceSource = "snapshot"
 	}
 	upstreamExpr, _ := modelExpr(upFields)
 	upstreamRatio, upstreamGroups, upstreamAmbiguous := upstreamGroupMultiplier(upFields, snapshotGroupRatios(snapshotBySource, sourceKey))
@@ -456,6 +467,11 @@ func buildChannelEntry(modelName string, ch boundChannelRow, ug usageAgg, localF
 		upstreamRatio, upstreamGroups, upstreamAmbiguous = 1, nil, false
 	}
 	currencyFactor, upstreamCurrency, currencySupported := upstreamCurrencyFactor(snapshotCurrency(snapshotBySource, sourceKey))
+	if priceSource == "manual" {
+		// Manual prices are entered in USD, so an upstream snapshot's display
+		// currency (e.g. TOKENS) must not mark them incomparable.
+		currencyFactor, upstreamCurrency, currencySupported = 1, "USD", true
+	}
 	upstreamRatio *= currencyFactor
 	entry := dto.AnalysisChannel{
 		ChannelID:              ch.ChannelID,
@@ -589,7 +605,7 @@ func windowCostUSD(expr string, samples []pricingSample) float64 {
 	}
 	var total float64
 	for _, s := range samples {
-		if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen, s.CacheRead, s.CacheWrite); usd != nil {
+		if usd := evalUsdWithTokens(expr, s.Prompt, s.Completion, s.InputLen, s.CacheRead, s.CacheWrite, s.ClaudeSemantic); usd != nil {
 			total += *usd
 		}
 	}
@@ -812,7 +828,7 @@ func tieredExpr(mode, expr, ctxTier, ctxTierPerCall string) (string, bool) {
 func evalUsd(expr string, ctx int) *float64 {
 	// Representative request has no cache traffic; cache-aware upstream prices
 	// then quote the plain input/output part of the expression.
-	return evalUsdWithTokens(expr, ctx, ctx/4, ctx, 0, 0)
+	return evalUsdWithTokens(expr, ctx, ctx/4, ctx, 0, 0, false)
 }
 
 // evalUsdWithTokens evaluates an expression with exact per-request token counts.
@@ -820,13 +836,31 @@ func evalUsd(expr string, ctx int) *float64 {
 // (BuildTieredTokenParams: prompt tokens, plus cache tokens on Claude-format
 // responses); pricing a log with plain prompt tokens would pick the wrong
 // per-call tier whenever cache tokens push the context over a boundary.
-func evalUsdWithTokens(expr string, prompt, completion, inputLen int, cacheRead, cacheWrite int) *float64 {
+func evalUsdWithTokens(expr string, prompt, completion, inputLen int, cacheRead, cacheWrite int, claudeSemantic bool) *float64 {
 	if expr == "" {
 		return nil
 	}
+	p := float64(prompt)
+	c := float64(completion)
+	// Mirrors billing.BuildTieredTokenParams: GPT-format prompt_tokens already
+	// include cache traffic, so a cache-priced expression must first remove
+	// those tokens from p or they get billed twice (once at the input rate,
+	// once at the cache rate). Claude-format prompt tokens are text-only.
+	if !claudeSemantic {
+		used := priceexpr.UsedVars(expr)
+		if used["cr"] {
+			p -= float64(cacheRead)
+		}
+		if used["cc"] {
+			p -= float64(cacheWrite)
+		}
+		if p < 0 {
+			p = 0
+		}
+	}
 	cost, _, err := priceexpr.RunExpr(expr, priceexpr.TokenParams{
-		P:   float64(prompt),
-		C:   float64(completion),
+		P:   p,
+		C:   c,
 		Len: float64(inputLen),
 		CR:  float64(cacheRead),
 		CC:  float64(cacheWrite),
@@ -1224,12 +1258,13 @@ type pricingSample struct {
 	Completion int
 	// InputLen is the total input context settlement priced this log against
 	// (Claude-format responses add cache tokens to prompt_tokens).
-	InputLen      int
-	CacheRead     int
-	CacheWrite    int
-	Quota         int64
-	GroupRatio    float64
-	BillingSource string
+	InputLen       int
+	CacheRead      int
+	CacheWrite     int
+	ClaudeSemantic bool
+	Quota          int64
+	GroupRatio     float64
+	BillingSource  string
 }
 
 // tierUsageByWindow buckets raw consume logs into the requested prompt-token
@@ -1270,11 +1305,14 @@ func tierUsageByWindow(modelNames []string, windows []int, start, end int64) map
 				groupRatio = v
 			}
 			billingSource, _ := meta["billing_source"].(string)
-			// Settlement tiers resolve against input_tokens_total, which equals
-			// prompt tokens for OpenAI-format and adds cache tokens for Claude.
-			inputLen := r.PromptTokens
-			if v, ok := meta["input_tokens_total"].(float64); ok && int(v) > 0 {
-				inputLen = int(v)
+			// Claude-format logs report text-only prompt tokens; GPT-format logs
+			// include cache traffic inside prompt_tokens.
+			claudeSemantic := false
+			if v, ok := meta["claude"].(bool); ok && v {
+				claudeSemantic = true
+			}
+			if v, ok := meta["usage_semantic"].(string); ok && v == "anthropic" {
+				claudeSemantic = true
 			}
 			// Cache hit/write tokens let cache-aware expressions price each log
 			// exactly; logs without the fields simply price them at zero.
@@ -1285,16 +1323,24 @@ func tierUsageByWindow(modelNames []string, windows []int, start, end int64) map
 			if v, ok := meta["cache_write_tokens"].(float64); ok {
 				cacheWrite = int(v)
 			}
+			// Settlement tiers resolve against the total input context length.
+			inputLen := r.PromptTokens
+			if v, ok := meta["input_tokens_total"].(float64); ok && int(v) > 0 {
+				inputLen = int(v)
+			} else if claudeSemantic {
+				inputLen = r.PromptTokens + cacheRead + cacheWrite
+			}
 			key := [3]any{r.ChannelID, r.ModelName, windows[sampleBucket(inputLen, windows)]}
 			out[key] = append(out[key], pricingSample{
-				Prompt:        r.PromptTokens,
-				Completion:    r.CompletionTokens,
-				InputLen:      inputLen,
-				CacheRead:     cacheRead,
-				CacheWrite:    cacheWrite,
-				Quota:         r.Quota,
-				GroupRatio:    groupRatio,
-				BillingSource: billingSource,
+				Prompt:         r.PromptTokens,
+				Completion:     r.CompletionTokens,
+				InputLen:       inputLen,
+				CacheRead:      cacheRead,
+				CacheWrite:     cacheWrite,
+				ClaudeSemantic: claudeSemantic,
+				Quota:          r.Quota,
+				GroupRatio:     groupRatio,
+				BillingSource:  billingSource,
 			})
 		}
 	}

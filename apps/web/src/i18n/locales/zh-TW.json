@@ -5322,7 +5322,7 @@
     "Sync command panel to QQ": "同步指令面板到 QQ",
     "Sync Endpoint": "同步端點",
     "Sync Endpoints": "同步端點",
-    "Sync failed": "",
+    "Sync failed": "同步失敗",
     "Sync Fields": "欄位同步",
     "Sync from the public upstream metadata repository.": "從公共上游元數據倉庫同步。",
     "Sync Now": "立即同步",
@@ -6589,6 +6589,10 @@
     "Select a model": "選擇模型",
     "Search model...": "搜尋模型...",
     "No matching model found.": "沒有匹配的模型",
-    "Profit comparison": "盈利對比"
+    "Profit comparison": "盈利對比",
+    "Per-token pricing needs at least one price": "按量計費至少要填寫一項價格",
+    "Failed to load manual prices": "載入手工價格失敗",
+    "Delete manual price?": "刪除手工價格？",
+    "This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered.": "將刪除 {{model}} 的手工價格，在重新錄入前該渠道不再計入成本。"
   }
 }

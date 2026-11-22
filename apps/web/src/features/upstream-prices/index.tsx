@@ -42,6 +42,9 @@ export function UpstreamPrices() {
   // channels page so the sync controls stay visible without scrolling.
   const [actionsContainer, setActionsContainer] =
     useState<HTMLDivElement | null>(null)
+  // 手工价格变更后让「盈利对比」重新拉取分析：两个页签共用页面级信号，
+  // 避免把分析数据塞进 react-query 或依赖跨组件事件。
+  const [analysisRefreshKey, setAnalysisRefreshKey] = useState(0)
 
   return (
     <SettingsPageProvider actionsContainer={actionsContainer} suppressSectionHeader>
@@ -86,14 +89,21 @@ export function UpstreamPrices() {
                 keepMounted
                 className='m-0 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden data-hidden:hidden'
               >
-                <UpstreamRatioSync />
+                <UpstreamRatioSync
+                  refreshKey={analysisRefreshKey}
+                  active={tab === 'auto'}
+                />
               </TabsContent>
               <TabsContent
                 value='manual'
                 keepMounted
                 className='m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
               >
-                <ManualUpstreamPrices />
+                <ManualUpstreamPrices
+                  onPricesChanged={() =>
+                    setAnalysisRefreshKey((key) => key + 1)
+                  }
+                />
               </TabsContent>
             </div>
           </Tabs>

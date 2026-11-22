@@ -117,7 +117,13 @@ function readCachedAnalysis(): CachedAnalysis | null {
 // Component
 // ---------------------------------------------------------------------------
 
-export function UpstreamRatioSync() {
+export function UpstreamRatioSync({
+  refreshKey = 0,
+  active = true,
+}: {
+  refreshKey?: number
+  active?: boolean
+} = {}) {
   const { t } = useTranslation()
 
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
@@ -177,6 +183,22 @@ export function UpstreamRatioSync() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }, [])
+
+  // 手工价格增删后重新分析：分析结果不在 react-query 里，invalidate 对它无效，
+  // 所以清掉本地缓存并强制刷新一次，避免继续展示旧成本。
+  const lastRefreshKeyRef = useRef(refreshKey)
+  useEffect(() => {
+    if (lastRefreshKeyRef.current === refreshKey) return
+    lastRefreshKeyRef.current = refreshKey
+    try {
+      sessionStorage.removeItem(ANALYSIS_CACHE_KEY)
+    } catch {
+      // ignore storage failures
+    }
+    analysisLoadedRef.current = false
+    lastFetchAtRef.current = 0
+    void handleRefreshAnalysis()
+  }, [refreshKey])
 
   const {
     data: channelsData,
@@ -454,40 +476,21 @@ export function UpstreamRatioSync() {
   // out of reach. On desktop they overlap content without adding anything, and
   // they must never float above an open dialog.
   const showFloatingActions = isMobile && !channelDialogOpen && !selectedAnalysisRow
-  const unpricedChannels = (analysisData?.rows ?? []).reduce(
-    (n, row) =>
-      n +
-      (row.channels ?? []).filter(
-        (ch) => ch.price_mode === '' && ch.billing_mode === ''
-      ).length,
-    0
-  )
-
   return (
     <div className='flex h-full min-h-0 flex-col gap-4'>
-      {(selectedChannelIds.length === 0 || unpricedChannels > 0) && (
-        <div className='rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400'>
-          {selectedChannelIds.length === 0
-            ? t(
-                'No sync channel selected: costs come from each channel\'s last fetched snapshot. Click "Select Sync Channels" and confirm to fetch current prices.'
-              )
-            : t(
-                '{{count}} channel bindings have no upstream price yet. Select those channels and confirm to fetch their prices.',
-                { count: unpricedChannels }
-              )}
-        </div>
+      {active && (
+        <SettingsPageActionsPortal>
+          <Button
+            size='sm'
+            className='max-sm:px-2'
+            onClick={handleOpenChannelDialog}
+            disabled={isLoading}
+          >
+            <RefreshCcw className='mr-2 h-4 w-4 max-sm:hidden' />
+            {t('Select Sync Channels')}
+          </Button>
+        </SettingsPageActionsPortal>
       )}
-      <SettingsPageActionsPortal>
-        <Button
-          size='sm'
-          className='max-sm:px-2'
-          onClick={handleOpenChannelDialog}
-          disabled={isLoading}
-        >
-          <RefreshCcw className='mr-2 h-4 w-4 max-sm:hidden' />
-          {t('Select Sync Channels')}
-        </Button>
-      </SettingsPageActionsPortal>
       <div className='flex min-h-0 flex-1 flex-col'>
         <PricingAnalysisTable
           data={analysisData}

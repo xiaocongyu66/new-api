@@ -193,11 +193,22 @@ export function ChannelSelectorDialog({
         enableSorting: false,
         cell: ({ row }) => {
           const channel = row.original
-          if (channel.last_sync_status === 'error') {
+          if (channel.last_sync_status === 'no_pricing') {
             return (
               <StatusBadge
                 label={t('No pricing API')}
                 variant='danger'
+                size='sm'
+                copyable={false}
+                title={channel.last_sync_error || undefined}
+              />
+            )
+          }
+          if (channel.last_sync_status === 'error') {
+            return (
+              <StatusBadge
+                label={t('Sync failed')}
+                variant='warning'
                 size='sm'
                 copyable={false}
                 title={channel.last_sync_error || undefined}

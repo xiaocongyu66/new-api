@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
 	"github.com/QuantumNous/new-api/internal/transport/contract"
+	"gorm.io/gorm/clause"
 )
 
 // ManualUpstreamPrice is an operator-entered upstream price for one
@@ -44,6 +45,14 @@ func (ManualUpstreamPrice) TableName() string { return "manual_upstream_prices" 
 func init() {
 	dbx.RegisterMigrations(dbx.Migration{Model: &ManualUpstreamPrice{}, Name: "ManualUpstreamPrice"})
 }
+
+// Sync outcome kinds shared with the UI. Only no_pricing means "this upstream
+// has no pricing endpoint"; everything else is a transient/other failure.
+const (
+	syncKindSuccess   = "success"
+	syncKindNoPricing = "no_pricing"
+	syncKindError     = "error"
+)
 
 const (
 	manualModePerCall  = "per_call"
@@ -169,6 +178,11 @@ func UpsertManualUpstreamPrice(c contract.Context) {
 	} else {
 		req.Expr = ""
 	}
+	if req.Mode == manualModePerToken &&
+		req.PriceIn == 0 && req.PriceOut == 0 && req.PriceCacheRead == 0 && req.PriceCacheWrite == 0 {
+		_ = c.JSON(http.StatusBadRequest, common.H{"success": false, "message": "按量计费至少需要填写一项价格"})
+		return
+	}
 	if _, err := channel.GetChannelById(req.ChannelID, false); err != nil {
 		_ = c.JSON(http.StatusBadRequest, common.H{"success": false, "message": "渠道不存在"})
 		return
@@ -190,8 +204,11 @@ func UpsertManualUpstreamPrice(c contract.Context) {
 			entry.UpdatedBy = id
 		}
 	}
-	if err := dbx.DB.Where("channel_id = ? AND model_name = ?", req.ChannelID, req.ModelName).
-		Assign(map[string]any{
+	// One statement, one row: concurrent saves of the same (channel, model)
+	// must update the winner instead of racing a SELECT-then-INSERT.
+	if err := dbx.DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "channel_id"}, {Name: "model_name"}},
+		DoUpdates: clause.Assignments(map[string]any{
 			"mode":              entry.Mode,
 			"price_in":          entry.PriceIn,
 			"price_out":         entry.PriceOut,
@@ -200,8 +217,8 @@ func UpsertManualUpstreamPrice(c contract.Context) {
 			"expr":              entry.Expr,
 			"updated_at":        entry.UpdatedAt,
 			"updated_by":        entry.UpdatedBy,
-		}).
-		FirstOrCreate(&entry).Error; err != nil {
+		}),
+	}).Create(&entry).Error; err != nil {
 		_ = c.JSON(http.StatusInternalServerError, common.H{"success": false, "message": err.Error()})
 		return
 	}
@@ -255,13 +272,24 @@ func recordUpstreamSyncStatus(channelID int, name, status, errMsg string, synced
 		Error:       errMsg,
 		SyncedAt:    syncedAt,
 	}
-	if err := dbx.DB.Where("channel_id = ?", channelID).Assign(map[string]any{
-		"channel_name": name,
-		"status":       status,
-		"error":        errMsg,
-		"synced_at":    syncedAt,
-	}).FirstOrCreate(&row).Error; err != nil {
-		common.SysError("failed to record upstream sync status: " + err.Error())
+	// Two overlapping /fetch calls finish in arbitrary order: only the newer
+	// outcome may win, so the older batch cannot roll the status back.
+	res := dbx.DB.Model(&UpstreamPriceSyncStatus{}).
+		Where("channel_id = ? AND synced_at <= ?", channelID, syncedAt).
+		Updates(map[string]any{
+			"channel_name": name,
+			"status":       status,
+			"error":        errMsg,
+			"synced_at":    syncedAt,
+		})
+	if res.Error != nil {
+		common.SysError("failed to record upstream sync status: " + res.Error.Error())
+		return
+	}
+	if res.RowsAffected == 0 {
+		if err := dbx.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
+			common.SysError("failed to record upstream sync status: " + err.Error())
+		}
 	}
 }
 

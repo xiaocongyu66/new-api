@@ -25,6 +25,7 @@ import type {
   LogCleanupTask,
   ManualUpstreamPriceListResponse,
   ManualUpstreamPriceUpsertRequest,
+  ManualUpstreamPriceUpsertResponse,
   PriceFluctuationResponse,
   PricingAnalysisRequest,
   PricingAnalysisResponse,
@@ -140,7 +141,7 @@ export async function getManualUpstreamPrices(channelId: number) {
 export async function upsertManualUpstreamPrice(
   request: ManualUpstreamPriceUpsertRequest
 ) {
-  const res = await api.put<ManualUpstreamPriceListResponse>(
+  const res = await api.put<ManualUpstreamPriceUpsertResponse>(
     '/api/ratio_sync/manual',
     request
   )

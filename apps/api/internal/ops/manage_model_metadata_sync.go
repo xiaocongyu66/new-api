@@ -48,10 +48,13 @@ const (
 // ---- Types ----
 
 type upstreamResult struct {
-	Name      string         `json:"name"`
-	ChannelID int            `json:"channel_id,omitempty"`
-	Data      map[string]any `json:"data,omitempty"`
-	Err       string         `json:"err,omitempty"`
+	Name      string `json:"name"`
+	ChannelID int    `json:"channel_id,omitempty"`
+	// SyncKind distinguishes "this upstream has no /api/pricing" from a
+	// transient failure, so the UI never mislabels a timeout.
+	SyncKind string         `json:"-"`
+	Data     map[string]any `json:"data,omitempty"`
+	Err      string         `json:"err,omitempty"`
 }
 
 type modelsDevProvider struct {
@@ -792,15 +795,17 @@ func FetchUpstreamRatios(c contract.Context) {
 			if resp.StatusCode != http.StatusOK {
 				logger.LogWarn(c.Context(), "non-200 from "+chItem.Name+": "+resp.Status)
 				errMsg := resp.Status
+				kind := syncKindError
 				switch resp.StatusCode {
 				case http.StatusNotFound:
 					errMsg = "上游未提供 /api/pricing 接口（不是 new-api，或该接口已关闭）"
+					kind = syncKindNoPricing
 				case http.StatusForbidden:
 					errMsg = "上游拒绝访问 /api/pricing（403），可能需要授权或 IP 白名单"
 				case http.StatusUnauthorized:
 					errMsg = "上游要求登录才能读取 /api/pricing（401）"
 				}
-				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, Err: errMsg}
+				ch <- upstreamResult{Name: uniqueName, ChannelID: chItem.ID, SyncKind: kind, Err: errMsg}
 				return
 			}
 
@@ -1057,9 +1062,13 @@ func FetchUpstreamRatios(c contract.Context) {
 				Status: "error",
 				Error:  r.Err,
 			})
-			recordUpstreamSyncStatus(r.ChannelID, r.Name, "error", r.Err, syncedAt)
+			kind := r.SyncKind
+			if kind == "" {
+				kind = syncKindError
+			}
+			recordUpstreamSyncStatus(r.ChannelID, r.Name, kind, r.Err, syncedAt)
 		} else {
-			recordUpstreamSyncStatus(r.ChannelID, r.Name, "success", "", syncedAt)
+			recordUpstreamSyncStatus(r.ChannelID, r.Name, syncKindSuccess, "", syncedAt)
 			testResults = append(testResults, dto.TestResult{
 				Name:   r.Name,
 				Status: "success",

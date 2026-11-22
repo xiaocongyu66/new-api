@@ -610,6 +610,12 @@ export type ManualUpstreamPriceUpsertRequest = {
   expr: string
 }
 
+export type ManualUpstreamPriceUpsertResponse = {
+  success: boolean
+  message?: string
+  data: ManualUpstreamPrice
+}
+
 export type ManualUpstreamPriceListResponse = {
   success: boolean
   message?: string
