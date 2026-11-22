@@ -52,14 +52,20 @@ func init() {
 // PersistModelAvailability appends one snapshot per unit and then applies
 // retention. Best effort: a failure is logged and never breaks the probe run.
 func PersistModelAvailability(snapshots []ModelAvailabilitySnapshot) {
-	if len(snapshots) == 0 {
-		return
+	if len(snapshots) > 0 {
+		if err := dbx.DB.CreateInBatches(snapshots, 200).Error; err != nil {
+			common.SysError("availability snapshot persist failed: " + err.Error())
+		}
 	}
-	if err := dbx.DB.CreateInBatches(snapshots, 200).Error; err != nil {
-		common.SysError("availability snapshot persist failed: " + err.Error())
-		return
-	}
+	// Trim even when the run produced nothing: a quiet window must still age
+	// out expired rows, or a channel that stopped serving lingers forever.
 	trimModelAvailability()
+}
+
+// unitKey identifies one (channel, model) availability unit.
+type unitKey struct {
+	ChannelId int
+	Model     string
 }
 
 // trimModelAvailability deletes expired rows and then keeps only the newest
@@ -74,22 +80,27 @@ func trimModelAvailability() {
 	// Bounded per model. The ordered scan is cheap: the table is capped at
 	// 24 rows per model by this very function.
 	type snapshotRow struct {
-		Id    int64
-		Model string
+		Id        int64
+		Model     string
+		ChannelId int
 	}
 	var rows []snapshotRow
 	if err := dbx.DB.Model(&ModelAvailabilitySnapshot{}).
-		Select("id, model").
-		Order("model ASC, created_at DESC, id DESC").
+		Select("id, model, channel_id").
+		Order("model ASC, channel_id ASC, created_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
 		common.SysError("availability snapshot trim scan failed: " + err.Error())
 		return
 	}
-	seen := make(map[string]int, len(rows))
+	// The cap is per (channel, model) unit: a model served by N channels gets
+	// N rows per run, so counting per model alone would evict whole channels
+	// every run.
+	seen := make(map[unitKey]int, len(rows))
 	drop := make([]int64, 0)
 	for _, row := range rows {
-		seen[row.Model]++
-		if seen[row.Model] > modelAvailabilityPerModel {
+		key := unitKey{ChannelId: row.ChannelId, Model: row.Model}
+		seen[key]++
+		if seen[key] > modelAvailabilityPerModel {
 			drop = append(drop, row.Id)
 		}
 	}
@@ -99,19 +110,6 @@ func trimModelAvailability() {
 	if err := dbx.DB.Where("id IN ?", drop).Delete(&ModelAvailabilitySnapshot{}).Error; err != nil {
 		common.SysError("availability snapshot trim failed: " + err.Error())
 	}
-}
-
-// LoadModelAvailability24h returns the newest snapshot per (model, channel)
-// inside the TTL. Aggregation stays in the caller so the probe thresholds and
-// the model square agree on the same rows.
-func LoadModelAvailability24h(ctx context.Context) ([]ModelAvailabilitySnapshot, error) {
-	cutoff := common.GetTimestamp() - modelAvailabilityTTL
-	var rows []ModelAvailabilitySnapshot
-	err := dbx.DB.WithContext(ctx).
-		Where("created_at >= ?", cutoff).
-		Order("model ASC, created_at DESC").
-		Find(&rows).Error
-	return rows, err
 }
 
 // LoadAvailabilitySnapshotsAsHealth turns the newest snapshot per
@@ -128,17 +126,13 @@ func LoadAvailabilitySnapshotsAsHealth(ctx context.Context) ([]usage.UpstreamHea
 		return nil, err
 	}
 
-	type unitKey struct {
-		channelId int
-		model     string
-	}
 	type healthRow struct {
 		ChannelId int
 		Model     string
 	}
 	var routes []healthRow
 	if err := dbx.DB.WithContext(ctx).Table("channel_model_routes AS r").
-		Select("r.channel_id, r.upstream_model AS model").
+		Select("r.channel_id, r.public_model_alias AS model").
 		Where("r.enabled = ?", true).
 		Group("r.channel_id, r.upstream_model").
 		Find(&routes).Error; err != nil {

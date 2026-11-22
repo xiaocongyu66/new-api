@@ -185,11 +185,22 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 		report(index, total)
 
 		// Channel aggregate over the units that real traffic measured this
-		// window. Models on this channel without their own traffic inherit it,
-		// so every model on a serving channel stays charted.
+		// window, restricted to models the channel still declares: removed
+		// units must not skew the rate inherited by served models. Models on
+		// this channel without their own traffic inherit it, so every model on
+		// a serving channel stays charted.
+		declared := make(map[string]struct{}, len(channel.GetModels()))
+		for _, rawModel := range channel.GetModels() {
+			if m := strings.TrimSpace(rawModel); m != "" {
+				declared[m] = struct{}{}
+			}
+		}
 		var aggRateSum, aggLatSum float64
 		aggN := 0
 		for _, key := range byChannel[channel.Id] {
+			if _, ok := declared[key.Model]; !ok {
+				continue
+			}
 			o := outcomes[key]
 			rate := 0.0
 			if o.Success {
@@ -244,15 +255,22 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 				continue
 			}
 
-			if err := dbx.DB.Create(&ops.ChannelProbeResult{
-				ChannelId: channel.Id,
-				Model:     model,
-				Success:   success,
-				LatencyMs: latencyMs,
-				ErrorCode: errorCode,
-				CreatedAt: now,
-			}).Error; err != nil {
-				common.SysError("probe result persist failed: " + err.Error())
+			// ChannelProbeResult is the evidence table the auto disable /
+			// restore thresholds act on. A channel-aggregate outcome is an
+			// estimate, not a measurement: writing it here would let sibling
+			// models' results disable a model that never ran. Inherited units
+			// are recorded in the snapshot table only.
+			if source == "request" {
+				if err := dbx.DB.Create(&ops.ChannelProbeResult{
+					ChannelId: channel.Id,
+					Model:     model,
+					Success:   success,
+					LatencyMs: latencyMs,
+					ErrorCode: errorCode,
+					CreatedAt: now,
+				}).Error; err != nil {
+					common.SysError("probe result persist failed: " + err.Error())
+				}
 			}
 			snapshots = append(snapshots, ops.ModelAvailabilitySnapshot{
 				Model:     model,
