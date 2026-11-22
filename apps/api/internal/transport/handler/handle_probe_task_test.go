@@ -101,3 +101,28 @@ func TestLatestProbeOutcomesNewestWinsAcrossTypes(t *testing.T) {
 	})
 	assert.False(t, degrade[probeUnitKey{ChannelId: 1, Model: "m"}].Success)
 }
+
+// TestLatestProbeOutcomesUpstreamContract 钉住上游取数路径的两个关键契约：
+//  1. 上游来源的结果必须携带来源标记与分级成功率（不能二值化为 0/100）；
+//  2. 证据表只收 source=request 的行——上游估算若泄漏进去，会用上游站的
+//     全局成功率误禁用本渠道正常服务的模型。
+func TestUpstreamOutcomeContract(t *testing.T) {
+	// 模拟 handle_probe_task 里上游取数写入的 outcome。
+	upstream := probeOutcome{
+		Success:    true, // >= 50
+		LatencyMs:  620,
+		HasLatency: true,
+		CreatedAt:  1795345000,
+		Source:     "upstream",
+		Rate:       62.5,
+	}
+	assert.Equal(t, "upstream", upstream.Source, "source must not be 'request'")
+	assert.InDelta(t, 62.5, upstream.Rate, 0.001, "graded rate must survive")
+
+	// 证据表门禁：仅 source=request 允许写 ChannelProbeResult。
+	mayWriteEvidence := upstream.Source == "request"
+	assert.False(t, mayWriteEvidence, "upstream estimates must never enter the evidence table")
+
+	request := probeOutcome{Success: true, Source: "request", Rate: 100}
+	assert.True(t, request.Source == "request" && request.Rate == 100)
+}

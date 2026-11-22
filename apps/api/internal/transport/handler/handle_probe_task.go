@@ -93,6 +93,15 @@ type probeOutcome struct {
 	// fast channel out of pure failures.
 	HasLatency bool
 	CreatedAt  int64
+	// Source labels where the outcome came from: "request" (own traffic in
+	// the local logs), "channel" (sibling aggregate), or "upstream" (the
+	// upstream site's own perf API). Only "request" is a measurement of this
+	// very unit, so only it may enter the auto-disable evidence table.
+	Source string
+	// Rate carries a graded 0-100 availability when the source provides one
+	// (upstream perf APIs report a graded rate; log-derived outcomes are
+	// binary 100/0).
+	Rate float64
 }
 
 // probeErrorCode clips a free-form error message to the column width.
@@ -208,6 +217,8 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 				LatencyMs:  entry.AvgLatency,
 				HasLatency: entry.AvgLatency > 0,
 				CreatedAt:  now,
+				Source:     "upstream",
+				Rate:       entry.SuccessRate,
 			}
 		}
 	}
@@ -286,10 +297,14 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 				success = outcome.Success
 				latencyMs = outcome.LatencyMs
 				errorCode = outcome.ErrorCode
-				if success {
+				source = outcome.Source
+				// Graded rate when the source provides one (upstream perf API);
+				// log-derived outcomes are binary and fall back to 100/0.
+				if outcome.Source == "upstream" {
+					rate = outcome.Rate
+				} else if success {
 					rate = 100
 				}
-				source = "request"
 			} else if aggN > 0 {
 				success = chRate >= 50
 				// Keep the channel's aggregate rate, but NOT its latency: this

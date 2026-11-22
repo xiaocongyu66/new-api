@@ -56,8 +56,10 @@ func FetchUpstreamPerf(ctx context.Context, channel *channelpkg.Channel) (*upstr
 	if err := egress.ValidateSSRFProtectedFetchURL(url); err != nil {
 		return nil, fmt.Errorf("request reject: %v", err)
 	}
-	client := &http.Client{Timeout: upstreamPerfTimeout}
-	resp, err := client.Do(req)
+	// Use the SSRF-protected client so redirect hops are re-validated: a
+	// compromised upstream could otherwise 302 the fetch into an internal
+	// address after the initial URL check passed.
+	resp, err := egress.GetSSRFProtectedHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
