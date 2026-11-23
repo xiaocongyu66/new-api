@@ -1,4 +1,4 @@
-package ops
+package perfsource
 
 // 回归：sub2api 适配器必须从「成功流水 + 失败流水」两侧派生成功率。
 //
@@ -9,19 +9,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
-	"github.com/QuantumNous/new-api/internal/egress"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
-
-func unmarshalForTest(body []byte, v any) error { return common.Unmarshal(body, v) }
-
-var _ = time.Now
 
 func TestSub2APIUsagePageParsing(t *testing.T) {
 	body := []byte(`{
@@ -34,8 +27,8 @@ func TestSub2APIUsagePageParsing(t *testing.T) {
 	    "total": 2, "page": 1, "page_size": 100, "pages": 1
 	  }
 	}`)
-	var page sub2apiUsagePage[sub2apiUsageItem]
-	require.NoError(t, unmarshalForTest(body, &page))
+	var page usagePage[usageItem]
+	require.NoError(t, common.Unmarshal(body, &page))
 	require.Len(t, page.Data.Items, 2)
 	assert.Equal(t, "gpt-5.6-sol", page.Data.Items[0].Model)
 	require.NotNil(t, page.Data.Items[0].DurationMs)
@@ -51,8 +44,7 @@ func TestSub2APIUsagePageParsing(t *testing.T) {
 
 func TestSub2APIRateDerivation(t *testing.T) {
 	// ok=3, err=1 → 75%, not 100%.
-	ok, failed := 3, 1
-	rate := float64(ok) / float64(ok+failed) * 100
+	rate := float64(3) / float64(3+1) * 100
 	assert.InDelta(t, 75, rate, 0.001)
 
 	// No failures recorded → 100% (honest: nothing failed).
@@ -63,14 +55,14 @@ func TestSub2APIRateDerivation(t *testing.T) {
 func TestSub2APITokensAreNotRelayKeys(t *testing.T) {
 	// The channel's relay key (sk-...) is rejected by /api/v1/usage; the
 	// adapter must require an explicitly configured access token instead.
-	assert.Equal(t, "", sub2apiAccessToken(nil))
+	assert.Equal(t, "", accessToken(nil))
 }
 
-// TestFetchSub2APIPerfEndToEnd 用假 sub2api 跑完整路径：
+// TestSub2APISourceEndToEnd 用假 sub2api 跑完整路径：
 // 成功流水给 duration/first_token，失败流水给错误条数，成功率必须由两侧
 // 派生（3 成 1 败 = 75%），且按小时归并、按渠道声明模型过滤。
-func TestFetchSub2APIPerfEndToEnd(t *testing.T) {
-	withAvailabilityDB(t)
+func TestSub2APISourceEndToEnd(t *testing.T) {
+	withPerfDB(t)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
@@ -93,13 +85,7 @@ func TestFetchSub2APIPerfEndToEnd(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-
-	fetchSetting := egress.GetFetchSetting()
-	original := *fetchSetting
-	t.Cleanup(func() { *fetchSetting = original })
-	fetchSetting.EnableSSRFProtection = true
-	fetchSetting.AllowPrivateIp = true
-	fetchSetting.AllowedPorts = nil
+	allowLoopback(t)
 
 	channel := &channelpkg.Channel{
 		Id: 6, Type: 1, Key: "sk-relay", Name: "xcmapi",
@@ -110,7 +96,7 @@ func TestFetchSub2APIPerfEndToEnd(t *testing.T) {
 	settings.Sub2APIAccessToken = "tok-123"
 	channel.SetOtherSettings(settings)
 
-	perf, err := FetchSub2APIPerf(t.Context(), channel)
+	perf, err := (sub2APISource{}).Fetch(t.Context(), channel)
 	require.NoError(t, err)
 	points, ok := perf["gpt-5.6-sol"]
 	require.True(t, ok)
@@ -127,11 +113,11 @@ func TestFetchSub2APIPerfEndToEnd(t *testing.T) {
 	assert.False(t, notDeclared, "models this channel does not declare are skipped")
 }
 
-// TestFetchSub2APIPerfRefusesWithoutErrorLog 钉住诚实性契约：
+// TestSub2APIRefusesWithoutErrorLog 钉住诚实性契约：
 // 失败流水读不到时，无法区分「真的零失败」与「错误视图被关闭」，
-// 此时不能输出 100% 这样的伪造值，必须让该级失败以便回退到本地真实请求。
-func TestFetchSub2APIPerfRefusesWithoutErrorLog(t *testing.T) {
-	withAvailabilityDB(t)
+// 此时不能输出 100% 这样的伪造值，必须让该级失败以便继续回退。
+func TestSub2APIRefusesWithoutErrorLog(t *testing.T) {
+	withPerfDB(t)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/usage", func(w http.ResponseWriter, r *http.Request) {
@@ -146,13 +132,7 @@ func TestFetchSub2APIPerfRefusesWithoutErrorLog(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-
-	fetchSetting := egress.GetFetchSetting()
-	original := *fetchSetting
-	t.Cleanup(func() { *fetchSetting = original })
-	fetchSetting.EnableSSRFProtection = true
-	fetchSetting.AllowPrivateIp = true
-	fetchSetting.AllowedPorts = nil
+	allowLoopback(t)
 
 	channel := &channelpkg.Channel{
 		Id: 9, Type: 1, Key: "sk-relay", Name: "x",
@@ -163,7 +143,7 @@ func TestFetchSub2APIPerfRefusesWithoutErrorLog(t *testing.T) {
 	settings.Sub2APIAccessToken = "tok"
 	channel.SetOtherSettings(settings)
 
-	perf, err := FetchSub2APIPerf(t.Context(), channel)
+	perf, err := (sub2APISource{}).Fetch(t.Context(), channel)
 	require.Error(t, err, "an unavailable error log must fail the tier, not fake 100%")
 	assert.Nil(t, perf)
 	assert.Contains(t, err.Error(), "error log unavailable")

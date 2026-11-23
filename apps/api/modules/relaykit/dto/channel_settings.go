@@ -159,6 +159,10 @@ type ChannelOtherSettings struct {
 	// 探活用它调用 /api/v1/usage 与 /api/v1/usage/errors 派生成功率与延迟；
 	// 中转密钥（sk-...）对这两个接口无效，必须单独配置。
 	Sub2APIAccessToken string `json:"sub2api_access_token,omitempty"`
+	// JKGroupID 是该上游公开监控页里的分组 id（/jk/status.json 的 groups[].id）。
+	// 监控数据按上游的组组织；留空时探活会用渠道密钥的可访问模型集合反查，
+	// 反查不唯一则放弃这一级，不会猜。
+	JKGroupID string `json:"jk_group_id,omitempty"`
 }
 
 // ChannelProbePolicy 是渠道级探测策略。迟滞带 [DisableBelow, EnableAbove)

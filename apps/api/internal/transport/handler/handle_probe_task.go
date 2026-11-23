@@ -8,6 +8,7 @@ import (
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/ops"
+	"github.com/QuantumNous/new-api/internal/perfsource"
 )
 
 type probeTaskPayload struct {
@@ -100,31 +101,15 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 		}
 		report(index, total)
 
-		// Fallback 链：new-api 性能接口 → sub2api 用量流水 → 本地真实请求。
-		// 前两者都是零推理消耗的上游统计；两者都取不到时才退回本地真实请求
-		// （那是唯一还有意义的证据，但只反映本站自己的流量）。
-		var models map[string][]ops.UpstreamHourPoint
-		snap, perfErr := ops.FetchUpstreamPerf(ctx, channel)
-		if perfErr == nil {
-			models = snap.Models
-		} else {
-			sub2, sub2Err := ops.FetchSub2APIPerf(ctx, channel)
-			if sub2Err == nil {
-				models = sub2
-				common.SysLog(fmt.Sprintf("channel %d using sub2api perf fallback", channel.Id))
-			} else {
-				local, localErr := ops.FetchLocalRequestPerf(ctx, channel)
-				if localErr == nil {
-					models = local
-					common.SysLog(fmt.Sprintf("channel %d using local request fallback", channel.Id))
-				} else {
-					common.SysLog(fmt.Sprintf("channel %d has no perf source: newapi=%v sub2api=%v local=%v",
-						channel.Id, perfErr, sub2Err, localErr))
-					continue
-				}
-			}
+		// 取数优先级：newapi → sub2api → jk 监控页 → 本地真实请求。
+		// 每一级的实现都在 internal/perfsource/<upstream>_source.go 里，
+		// 这里只负责「拿到就用、拿不到继续往下」。
+		snap, perfErr := perfsource.Collect(ctx, channel)
+		if perfErr != nil {
+			common.SysLog(fmt.Sprintf("channel %d has no perf source: %v", channel.Id, perfErr))
+			continue
 		}
-		for alias, points := range models {
+		for alias, points := range snap.Models {
 			for _, point := range points {
 				bucketTs := point.Ts
 				if bucketTs <= 0 {
@@ -144,7 +129,7 @@ func runProbeTask(ctx context.Context, channelIds []int, task *ops.SystemTask, r
 					Rate:      point.Rate,
 					LatencyMs: point.LatencyMs,
 					TtftMs:    ttft,
-					Source:    "upstream",
+					Source:    snap.Source,
 					CreatedAt: now,
 				})
 				tested++

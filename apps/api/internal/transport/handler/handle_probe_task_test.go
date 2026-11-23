@@ -14,10 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/QuantumNous/new-api/internal/ops"
+	"github.com/QuantumNous/new-api/internal/perfsource"
 )
 
 func TestUpstreamHourPointsPreserveHourlyVariation(t *testing.T) {
-	points := []ops.UpstreamHourPoint{
+	points := []perfsource.Point{
 		{Ts: 1795284000, Rate: 71.43, LatencyMs: 78595, TtftMs: 10538},
 		{Ts: 1795287600, Rate: 47.37, LatencyMs: 30210},
 		{Ts: 1795291200, Rate: 0, LatencyMs: 0},

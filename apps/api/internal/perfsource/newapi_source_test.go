@@ -1,4 +1,4 @@
-package ops
+package perfsource
 
 // 回归：上游性能接口的解析必须保留逐小时差异。
 //
@@ -14,7 +14,6 @@ import (
 	channelpkg "github.com/QuantumNous/new-api/internal/catalog"
 	"github.com/QuantumNous/new-api/internal/common"
 	"github.com/QuantumNous/new-api/internal/common/dbx"
-	"github.com/QuantumNous/new-api/internal/egress"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,8 +32,8 @@ const upstreamSeriesFixture = `{
   }
 }`
 
-func TestParseUpstreamModelSeriesKeepsHourlyPoints(t *testing.T) {
-	points, err := parseUpstreamModelSeries([]byte(upstreamSeriesFixture))
+func TestParseModelSeriesKeepsHourlyPoints(t *testing.T) {
+	points, err := parseModelSeries([]byte(upstreamSeriesFixture))
 	require.NoError(t, err)
 	require.Len(t, points, 3, "the point without ts must be dropped")
 
@@ -54,18 +53,17 @@ func TestParseUpstreamModelSeriesKeepsHourlyPoints(t *testing.T) {
 	assert.Zero(t, points[2].TtftMs)
 }
 
-func TestParseUpstreamModelSeriesRejectsGarbage(t *testing.T) {
-	_, err := parseUpstreamModelSeries([]byte("not json"))
+func TestParseModelSeriesRejectsGarbage(t *testing.T) {
+	_, err := parseModelSeries([]byte("not json"))
 	require.Error(t, err)
 }
 
-// TestFetchUpstreamPerfEndToEnd 用一个假上游跑完整取数路径：
+// TestNewAPISourceEndToEnd 用一个假上游跑完整取数路径：
 // summary 给模型清单，单模型接口给逐小时序列；配置 model_mapping 时
 // 上游名必须映射回本地公开别名。这是图表数据的唯一来源，必须有端到端覆盖。
-func TestFetchUpstreamPerfEndToEnd(t *testing.T) {
-	withAvailabilityDB(t)
+func TestNewAPISourceEndToEnd(t *testing.T) {
+	withPerfDB(t)
 
-	// A fake upstream exposing both endpoints.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/perf-metrics/summary", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"success":true,"data":{"models":[
@@ -85,14 +83,7 @@ func TestFetchUpstreamPerfEndToEnd(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-
-	// Allow the loopback address so the SSRF-guarded client can reach the fake.
-	fetchSetting := egress.GetFetchSetting()
-	original := *fetchSetting
-	t.Cleanup(func() { *fetchSetting = original })
-	fetchSetting.EnableSSRFProtection = true
-	fetchSetting.AllowPrivateIp = true
-	fetchSetting.AllowedPorts = nil // httptest uses an ephemeral port
+	allowLoopback(t)
 
 	// local alias "gpt-4" is served by upstream "upstream-alias".
 	require.NoError(t, dbx.DB.Create(&channelpkg.ChannelModelRoute{
@@ -106,9 +97,9 @@ func TestFetchUpstreamPerfEndToEnd(t *testing.T) {
 		BaseURL: &[]string{srv.URL}[0],
 	}
 
-	snap, err := FetchUpstreamPerf(t.Context(), channel)
+	snap, err := (newAPISource{}).Fetch(t.Context(), channel)
 	require.NoError(t, err)
-	points, ok := snap.Models["gpt-4"]
+	points, ok := snap["gpt-4"]
 	require.True(t, ok, "the upstream name must map back to the local alias")
 	require.Len(t, points, 2)
 	assert.InDelta(t, 71.43, points[0].Rate, 0.01)
@@ -117,6 +108,6 @@ func TestFetchUpstreamPerfEndToEnd(t *testing.T) {
 	assert.InDelta(t, 47.37, points[1].Rate, 0.01)
 	assert.NotEqual(t, points[0].Rate, points[1].Rate, "hourly values must stay distinct")
 
-	_, notDeclared := snap.Models["not-declared"]
+	_, notDeclared := snap["not-declared"]
 	assert.False(t, notDeclared, "models this channel does not declare must be skipped")
 }
