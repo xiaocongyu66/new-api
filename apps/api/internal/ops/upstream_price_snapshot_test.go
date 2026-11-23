@@ -59,27 +59,31 @@ func TestPriceFluctuationIgnoresSourcesMissingFromNewerBatch(t *testing.T) {
 	assert.InDelta(t, 50.0, *changes[0].ChangePct, 1e-9)
 }
 
-// TestPersistReplacesSameSecondBatch pins the same-second batch semantics: a
-// second fetch in the same second replaces the earlier one instead of merging
-// two different channel scopes into one batch.
+// TestPersistReplacesSameSecondBatch pins the same-second replacement scope:
+// re-persisting the same source in the same second replaces that source's rows
+// instead of duplicating them, while a different source fetched in the same
+// second (a concurrent request) is preserved.
 func TestPersistReplacesSameSecondBatch(t *testing.T) {
 	withSnapshotDB(t)
 
-	persist := func(name string) {
+	persist := func(name string, ratio float64) {
 		persistUpstreamPriceSnapshots(500, []struct {
 			name string
 			data map[string]any
 		}{{name: name, data: map[string]any{
-			"model_ratio": map[string]any{"m1": 1.0},
+			"model_ratio": map[string]any{"m1": ratio},
 		}}})
 	}
-	persist("first")
-	persist("second")
+	persist("first", 1.0)
+	persist("first", 2.0)
+	persist("second", 3.0)
 
 	var rows []UpstreamPriceSnapshot
-	require.NoError(t, dbx.DB.Where("fetched_at = ?", 500).Find(&rows).Error)
-	require.Len(t, rows, 1)
-	assert.Equal(t, "second", rows[0].Source)
+	require.NoError(t, dbx.DB.Where("fetched_at = ?", 500).Order("source").Find(&rows).Error)
+	require.Len(t, rows, 2, "one row per source; same-source repeat must replace")
+	assert.Equal(t, "first", rows[0].Source)
+	assert.Equal(t, "2", rows[0].Value)
+	assert.Equal(t, "second", rows[1].Source)
 }
 
 // TestTrimUpstreamPriceSnapshotsKeepsNewestBatches pins the retention bound:
@@ -106,4 +110,27 @@ func TestTrimUpstreamPriceSnapshotsKeepsNewestBatches(t *testing.T) {
 	// Pre-existing batches 1..15 plus the persisted 16 -> 16 total; keeping the
 	// newest 12 leaves 5..16, so the oldest survivor is 5.
 	assert.Equal(t, int64(5), batches[0], "oldest surviving batch is the first not trimmed")
+}
+
+// TestPersistKeepsConcurrentBatchesOfDifferentSources pins the multi-request
+// case: two /fetch calls can land in the same second (second-resolution batch
+// key), and one must not delete the other's channels.
+func TestPersistKeepsConcurrentBatchesOfDifferentSources(t *testing.T) {
+	withSnapshotDB(t)
+
+	persist := func(name string) {
+		persistUpstreamPriceSnapshots(500, []struct {
+			name string
+			data map[string]any
+		}{{name: name, data: map[string]any{
+			"model_ratio": map[string]any{"m1": 1.0},
+		}}})
+	}
+	persist("channel-a")
+	persist("channel-b")
+
+	var rows []UpstreamPriceSnapshot
+	require.NoError(t, dbx.DB.Where("fetched_at = ?", 500).Find(&rows).Error)
+	require.Len(t, rows, 2)
+	assert.ElementsMatch(t, []string{"channel-a", "channel-b"}, []string{rows[0].Source, rows[1].Source})
 }

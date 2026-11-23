@@ -57,11 +57,22 @@ func persistUpstreamPriceSnapshots(fetchedAt int64, successfulChannels []struct 
 	if len(rows) == 0 {
 		return
 	}
+	// Replace only the sources this batch actually re-fetched. The batch key has
+	// second resolution and each /fetch carries its own selection, so deleting
+	// the whole second would let one request erase a concurrent request's
+	// channels (both write the same fetched_at). Scoping the delete by source
+	// keeps "same source, same second replaces" without cross-channel loss.
+	sources := make([]string, 0, len(successfulChannels))
+	seen := make(map[string]struct{}, len(successfulChannels))
+	for _, ch := range successfulChannels {
+		if _, ok := seen[ch.name]; ok {
+			continue
+		}
+		seen[ch.name] = struct{}{}
+		sources = append(sources, ch.name)
+	}
 	if err := dbx.DB.Transaction(func(tx *gorm.DB) error {
-		// The batch key has second resolution. A second fetch in the same
-		// second must replace, not merge with, the earlier one: the newest
-		// fetch alone represents the current channel scope.
-		if err := tx.Where("fetched_at = ?", fetchedAt).Delete(&UpstreamPriceSnapshot{}).Error; err != nil {
+		if err := tx.Where("fetched_at = ? AND source IN ?", fetchedAt, sources).Delete(&UpstreamPriceSnapshot{}).Error; err != nil {
 			return err
 		}
 		return tx.Create(rows).Error
