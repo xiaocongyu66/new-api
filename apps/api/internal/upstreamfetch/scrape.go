@@ -66,16 +66,15 @@ func extractRowsFromHTML(document []byte, spec Spec) ([]Row, error) {
 		}
 		values := make(map[string]string, len(spec.Values))
 		for name, selector := range spec.Values {
+			// 选择器可以带 @attr 后缀直接取属性，例如 a@href。
+			// 必须先拆分再匹配：@ 不是选择器语法的一部分，带着它去匹配
+			// 只会把属性名当成标签名，永远匹配不到。
+			selector, attr, hasAttr := splitAttrSelector(selector)
 			valueNode := firstMatch(node, selector)
 			if valueNode == nil {
 				continue
 			}
-			// 选择器可以带 @attr 后缀直接取属性，例如 a@href
-			if selector, attr, ok := splitAttrSelector(selector); ok {
-				valueNode = firstMatch(node, selector)
-				if valueNode == nil {
-					continue
-				}
+			if hasAttr {
 				if text := nodeAttr(valueNode, attr); text != "" {
 					values[name] = text
 				}

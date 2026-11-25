@@ -115,6 +115,13 @@ func (s Spec) Validate() error {
 	if s.Strategy == StrategyBrowser && strings.TrimSpace(s.AdapterCmd) == "" {
 		return fmt.Errorf("browser strategy requires adapter_cmd")
 	}
+	// 鉴权方式必须显式落在枚举里：ApplyAuth 的 switch 没有 default 分支，
+	// 拼错的 mode 会静默退化成匿名请求，把半公开页面当成渠道数据写进库。
+	switch s.Auth.Mode {
+	case "", AuthNone, AuthChannelKey, AuthBearer, AuthHeader:
+	default:
+		return fmt.Errorf("unknown auth mode %q", s.Auth.Mode)
+	}
 	if s.Auth.Mode == AuthBearer && strings.TrimSpace(s.Auth.Token) == "" {
 		return fmt.Errorf("bearer auth requires a token")
 	}

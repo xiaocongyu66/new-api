@@ -197,6 +197,9 @@ func TestScrapeStrategy(t *testing.T) {
 			"input":  "td.in",
 			"output": "td.out",
 			"unit":   "td.in@data-unit",
+			// 纯类选择器 + @attr：@ 不是选择器语法的一部分，必须先拆分再匹配，
+			// 否则属性名会被当成标签名，这个字段静默丢失。
+			"unit_class": ".in@data-unit",
 		},
 		Numeric: []string{"input", "output"},
 	}
@@ -206,6 +209,7 @@ func TestScrapeStrategy(t *testing.T) {
 	assert.Equal(t, "gpt-5.6-sol", result.Rows[0].Key)
 	assert.Equal(t, "0.0000002", result.Rows[0].Values["input"])
 	assert.Equal(t, "usd", result.Rows[0].Values["unit"])
+	assert.Equal(t, "usd", result.Rows[0].Values["unit_class"])
 }
 
 // TestScrapeStrategyFailsLoudly：选择器失配必须报错，不能返回空结果让上层
@@ -280,6 +284,10 @@ func TestSpecValidation(t *testing.T) {
 		"no rows":          {Strategy: StrategyAPI, URL: "/x", Key: "k", Values: map[string]string{"v": "v"}},
 		"no values":        {Strategy: StrategyAPI, URL: "/x", Rows: "d", Key: "k"},
 		"browser no cmd":   {Strategy: StrategyBrowser, URL: "/x", Rows: "d", Key: "k", Values: map[string]string{"v": "v"}},
+		// 拼错的鉴权方式必须报错：ApplyAuth 的 switch 没有 default，
+		// 放过去就会静默退化成匿名请求。
+		"unknown auth mode": {Strategy: StrategyAPI, URL: "/x", Rows: "d", Key: "k",
+			Values: map[string]string{"v": "v"}, Auth: Auth{Mode: "apikey"}},
 	}
 	for name, spec := range cases {
 		t.Run(name, func(t *testing.T) {
