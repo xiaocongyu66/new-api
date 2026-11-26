@@ -127,8 +127,9 @@ func ProbeSub2APIAccount(ctx context.Context, baseURL, username, password, acces
 
 	probe := Sub2APIAccountProbe{GroupIDs: []string{}}
 	groupSet := make(map[string]struct{})
+	const keysPageSize = 50
 	for page := 1; page <= 10; page++ {
-		target := fmt.Sprintf("%s/api/v1/keys?page=%d&page_size=50", base, page)
+		target := fmt.Sprintf("%s/api/v1/keys?page=%d&page_size=%d", base, page, keysPageSize)
 		body, err := getWithBearer(ctx, target, bearer)
 		if err != nil {
 			return probe, fmt.Errorf("list keys failed: %w", err)
@@ -143,7 +144,22 @@ func ProbeSub2APIAccount(ctx context.Context, baseURL, username, password, acces
 				groupSet[groupID] = struct{}{}
 			}
 		}
-		if len(pageDoc.Data.Items) == 0 || pageDoc.Data.Pages == 0 || page >= pageDoc.Data.Pages {
+		if len(pageDoc.Data.Items) == 0 {
+			break
+		}
+		lastPage := false
+		switch {
+		case pageDoc.Data.Pages > 0:
+			// 上游给了总页数，按它停。
+			lastPage = page >= pageDoc.Data.Pages
+		case pageDoc.Data.Total > 0:
+			// 有的版本只回 total，用累计条数判断是否已取完。
+			lastPage = int64(probe.KeyCount) >= pageDoc.Data.Total
+		default:
+			// 既没有 pages 也没有 total 时，短页即为最后一页。
+			lastPage = len(pageDoc.Data.Items) < keysPageSize
+		}
+		if lastPage {
 			break
 		}
 	}
