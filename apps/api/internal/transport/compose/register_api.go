@@ -1,6 +1,8 @@
 package compose
 
 import (
+	"net/http"
+
 	"github.com/QuantumNous/new-api/internal/billing"
 	"github.com/QuantumNous/new-api/internal/identity"
 	"github.com/QuantumNous/new-api/internal/identity/policy"
@@ -369,6 +371,11 @@ func SetApiRouter(router contract.Engine) {
 			ratioSyncRoute.PUT("/manual", handler.UpsertManualUpstreamPrice)
 			ratioSyncRoute.DELETE("/manual", handler.DeleteManualUpstreamPrice)
 		}
+		upstreamAccountRoute := apiRouter.Group("/upstream-account")
+		upstreamAccountRoute.Use(security.AdminAuth())
+		for _, route := range upstreamAccountPermissionRoutes {
+			upstreamAccountRoute.Handle(route.method, route.path, security.RequirePermission(route.permission), route.handler)
+		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
@@ -491,4 +498,14 @@ func SetApiRouter(router contract.Engine) {
 		}
 
 	}
+}
+
+// upstreamAccountPermissionRoutes 按注册顺序执行；全部持有 system.settings，
+// 因为这张表里的凭据能被所有同域名渠道拿去发请求，范围远超单个渠道。
+var upstreamAccountPermissionRoutes = []permissionRoute{
+	{method: http.MethodGet, path: "/", permission: policy.SystemSettings, handler: handler.GetUpstreamAccounts},
+	{method: http.MethodPost, path: "/", permission: policy.SystemSettings, handler: handler.AddUpstreamAccount},
+	{method: http.MethodPut, path: "/", permission: policy.SystemSettings, handler: handler.UpdateUpstreamAccount},
+	{method: http.MethodDelete, path: "/:id", permission: policy.SystemSettings, handler: handler.DeleteUpstreamAccount},
+	{method: http.MethodPost, path: "/:id/test", permission: policy.SystemSettings, handler: handler.TestUpstreamAccount},
 }

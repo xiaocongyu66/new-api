@@ -39,6 +39,7 @@ import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminProxyRouteImport } from './routes/_authenticated/admin/proxy'
 import { Route as AuthenticatedAdminSystemSettingsRouteRouteImport } from './routes/_authenticated/admin/system-settings/route'
+import { Route as AuthenticatedAdminUpstreamAccountsRouteImport } from './routes/_authenticated/admin/upstream-accounts'
 import { Route as AuthenticatedAdminUpstreamPricesRouteImport } from './routes/_authenticated/admin/upstream-prices'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
@@ -255,6 +256,16 @@ const AuthenticatedAdminSystemSettingsRouteRoute =
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any).lazy(() =>
     import('./routes/_authenticated/admin/system-settings/route.lazy').then(
+      (d) => d.Route,
+    ),
+  )
+const AuthenticatedAdminUpstreamAccountsRoute =
+  AuthenticatedAdminUpstreamAccountsRouteImport.update({
+    id: '/upstream-accounts',
+    path: '/upstream-accounts',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any).lazy(() =>
+    import('./routes/_authenticated/admin/upstream-accounts.lazy').then(
       (d) => d.Route,
     ),
   )
@@ -743,6 +754,7 @@ export interface FileRoutesByFullPath {
   '/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRouteRouteWithChildren
   '/user/reset': typeof authUserResetRoute
   '/admin/proxy': typeof AuthenticatedAdminProxyRoute
+  '/admin/upstream-accounts': typeof AuthenticatedAdminUpstreamAccountsRoute
   '/admin/upstream-prices': typeof AuthenticatedAdminUpstreamPricesRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -830,6 +842,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/admin/proxy': typeof AuthenticatedAdminProxyRoute
+  '/admin/upstream-accounts': typeof AuthenticatedAdminUpstreamAccountsRoute
   '/admin/upstream-prices': typeof AuthenticatedAdminUpstreamPricesRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -923,6 +936,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/system-settings': typeof AuthenticatedAdminSystemSettingsRouteRouteWithChildren
   '/(auth)/user/reset': typeof authUserResetRoute
   '/_authenticated/admin/proxy': typeof AuthenticatedAdminProxyRoute
+  '/_authenticated/admin/upstream-accounts': typeof AuthenticatedAdminUpstreamAccountsRoute
   '/_authenticated/admin/upstream-prices': typeof AuthenticatedAdminUpstreamPricesRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -1015,6 +1029,7 @@ export interface FileRouteTypes {
     | '/admin/system-settings'
     | '/user/reset'
     | '/admin/proxy'
+    | '/admin/upstream-accounts'
     | '/admin/upstream-prices'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -1102,6 +1117,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/user/reset'
     | '/admin/proxy'
+    | '/admin/upstream-accounts'
     | '/admin/upstream-prices'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -1194,6 +1210,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/system-settings'
     | '/(auth)/user/reset'
     | '/_authenticated/admin/proxy'
+    | '/_authenticated/admin/upstream-accounts'
     | '/_authenticated/admin/upstream-prices'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
@@ -1486,6 +1503,13 @@ declare module '@tanstack/react-router' {
       path: '/system-settings'
       fullPath: '/admin/system-settings'
       preLoaderRoute: typeof AuthenticatedAdminSystemSettingsRouteRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/upstream-accounts': {
+      id: '/_authenticated/admin/upstream-accounts'
+      path: '/upstream-accounts'
+      fullPath: '/admin/upstream-accounts'
+      preLoaderRoute: typeof AuthenticatedAdminUpstreamAccountsRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/upstream-prices': {
@@ -1997,6 +2021,7 @@ const AuthenticatedAdminSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminSystemSettingsRouteRoute: typeof AuthenticatedAdminSystemSettingsRouteRouteWithChildren
   AuthenticatedAdminProxyRoute: typeof AuthenticatedAdminProxyRoute
+  AuthenticatedAdminUpstreamAccountsRoute: typeof AuthenticatedAdminUpstreamAccountsRoute
   AuthenticatedAdminUpstreamPricesRoute: typeof AuthenticatedAdminUpstreamPricesRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedAdminModelsSectionRoute: typeof AuthenticatedAdminModelsSectionRoute
@@ -2015,6 +2040,8 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
     AuthenticatedAdminSystemSettingsRouteRoute:
       AuthenticatedAdminSystemSettingsRouteRouteWithChildren,
     AuthenticatedAdminProxyRoute: AuthenticatedAdminProxyRoute,
+    AuthenticatedAdminUpstreamAccountsRoute:
+      AuthenticatedAdminUpstreamAccountsRoute,
     AuthenticatedAdminUpstreamPricesRoute:
       AuthenticatedAdminUpstreamPricesRoute,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,

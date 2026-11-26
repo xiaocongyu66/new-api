@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Box,
   CreditCard,
+  KeyRound,
   Network,
   Radio,
   ScanSearch,
@@ -55,6 +56,14 @@ export const ADMIN_NAVIGATION: readonly AdminNavigationItem[] = [
     labelKey: 'admin.upstreamPrices',
     to: '/admin/upstream-prices',
     icon: Tags,
+    requiredCapability: { resource: 'system', action: 'settings' },
+  },
+  // 上游账号与价格页同属上游治理，放在同一组入口。
+  {
+    id: 'upstream-accounts',
+    labelKey: 'admin.upstreamAccounts',
+    to: '/admin/upstream-accounts',
+    icon: KeyRound,
     requiredCapability: { resource: 'system', action: 'settings' },
   },
   { id: 'models', labelKey: 'admin.models', to: '/admin/models/$section', params: { section: 'metadata' }, icon: Box },

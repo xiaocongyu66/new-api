@@ -48,26 +48,27 @@ type sub2apiAuthEnvelope struct {
 //  2. 用 refresh_token 换新 token
 //  3. 用 username + password 重新登录
 //
-// 拿到新 token 后写回渠道 settings，避免每次探活都重登。
+// 凭据可能来自渠道 settings，也可能来自按 host 复用的上游账号；续期后的
+// 新 token 只写回它来自的那一处。
 func resolveSub2APIToken(ctx context.Context, channel *channelpkg.Channel) (string, error) {
-	if channel == nil {
-		return "", fmt.Errorf("sub2api channel is nil")
+	credentials, err := sub2apiCredentials(channel)
+	if err != nil {
+		return "", err
 	}
-	settings := channel.GetOtherSettings()
-	token := strings.TrimSpace(settings.Sub2APIAccessToken)
-	if token != "" && !sub2apiTokenExpired(settings.Sub2APITokenExpiresAt, time.Now()) {
-		return token, nil
+	if credentials.AccessToken != "" && !sub2apiTokenExpired(credentials.TokenExpiresAt, time.Now()) {
+		return credentials.AccessToken, nil
 	}
-	return refreshSub2APIToken(ctx, channel, settings)
+	return refreshSub2APIToken(ctx, channel, credentials)
 }
 
 // forceRefreshSub2APIToken 跳过第 1 步，直接走 2→3。
 // 供上游返回 401 时主动作废本地 token 后重试。
 func forceRefreshSub2APIToken(ctx context.Context, channel *channelpkg.Channel) (string, error) {
-	if channel == nil {
-		return "", fmt.Errorf("sub2api channel is nil")
+	credentials, err := sub2apiCredentials(channel)
+	if err != nil {
+		return "", err
 	}
-	return refreshSub2APIToken(ctx, channel, channel.GetOtherSettings())
+	return refreshSub2APIToken(ctx, channel, credentials)
 }
 
 // sub2apiTokenExpired 按 expires_at > 0 && now >= expires_at - 60s 判定过期；
@@ -79,28 +80,28 @@ func sub2apiTokenExpired(expiresAt int64, now time.Time) bool {
 	return !now.Before(time.Unix(expiresAt, 0).Add(-sub2apiTokenExpiryMargin))
 }
 
-func refreshSub2APIToken(ctx context.Context, channel *channelpkg.Channel, settings dto.ChannelOtherSettings) (string, error) {
-	base := strings.TrimRight(channel.GetBaseURL(), "/")
+func refreshSub2APIToken(ctx context.Context, channel *channelpkg.Channel, credentials sub2apiCredentialSet) (string, error) {
+	base := strings.TrimRight(strings.TrimSpace(credentials.BaseURL), "/")
 	if base == "" {
 		return "", fmt.Errorf("channel has no base url")
 	}
 
 	var failures []string
-	if refreshToken := strings.TrimSpace(settings.Sub2APIRefreshToken); refreshToken != "" {
+	if refreshToken := strings.TrimSpace(credentials.RefreshToken); refreshToken != "" {
 		token, err := sub2apiRefreshToken(ctx, base, refreshToken)
 		if err == nil {
-			persistSub2APIToken(channel, token)
+			persistSub2APICredentials(channel, credentials, token)
 			return token.AccessToken, nil
 		}
 		failures = append(failures, "refresh: "+err.Error())
 	}
 
-	username := strings.TrimSpace(settings.Sub2APIUsername)
-	password := settings.Sub2APIPassword
+	username := strings.TrimSpace(credentials.Username)
+	password := credentials.Password
 	if username != "" && password != "" {
 		token, err := sub2apiLogin(ctx, base, username, password)
 		if err == nil {
-			persistSub2APIToken(channel, token)
+			persistSub2APICredentials(channel, credentials, token)
 			return token.AccessToken, nil
 		}
 		failures = append(failures, "login: "+err.Error())
@@ -178,9 +179,37 @@ func sub2apiPostJSON(ctx context.Context, rawURL string, payload any) ([]byte, e
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("sub2api auth upstream status %d", resp.StatusCode)
+		// 把「凭据不对」和「上游自己挂了」分开报：两者都表现为登录失败，但
+		// 处理方式完全不同——401/403 要改密码，5xx/502 只能等上游恢复。
+		switch {
+		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+			return nil, fmt.Errorf("sub2api rejected the credentials (HTTP %d): check the account and password", resp.StatusCode)
+		case resp.StatusCode >= 500:
+			return nil, fmt.Errorf("sub2api is unavailable right now (HTTP %d): the upstream itself is failing, retry later", resp.StatusCode)
+		case resp.StatusCode == http.StatusTooManyRequests:
+			return nil, fmt.Errorf("sub2api rate limited the login (HTTP 429): retry later")
+		default:
+			return nil, fmt.Errorf("sub2api auth failed with HTTP %d", resp.StatusCode)
+		}
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, sub2apiAuthBodyLimit))
+}
+
+func persistSub2APICredentials(channel *channelpkg.Channel, credentials sub2apiCredentialSet, token *sub2apiAuthToken) {
+	if token == nil {
+		return
+	}
+	if credentials.Source == sub2apiCredentialSourceAccount {
+		accessToken := strings.TrimSpace(token.AccessToken)
+		if accessToken == "" {
+			return
+		}
+		if err := channelpkg.SaveUpstreamAccountToken(credentials.AccountId, accessToken, token.RefreshToken, sub2apiTokenExpiresAt(token)); err != nil {
+			common.SysLog(fmt.Sprintf("sub2api account token persist failed: account_id=%d: %v", credentials.AccountId, err))
+		}
+		return
+	}
+	persistSub2APIToken(channel, token)
 }
 
 func persistSub2APIToken(channel *channelpkg.Channel, token *sub2apiAuthToken) {
@@ -191,10 +220,7 @@ func persistSub2APIToken(channel *channelpkg.Channel, token *sub2apiAuthToken) {
 	if accessToken == "" {
 		return
 	}
-	expiresAt := int64(0)
-	if token.ExpiresIn > 0 {
-		expiresAt = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second).Unix()
-	}
+	expiresAt := sub2apiTokenExpiresAt(token)
 	updateSub2APISettings(channel, func(settings *dto.ChannelOtherSettings) {
 		settings.Sub2APIAccessToken = accessToken
 		if refreshToken := strings.TrimSpace(token.RefreshToken); refreshToken != "" {
@@ -204,9 +230,27 @@ func persistSub2APIToken(channel *channelpkg.Channel, token *sub2apiAuthToken) {
 	})
 }
 
+func sub2apiTokenExpiresAt(token *sub2apiAuthToken) int64 {
+	if token == nil || token.ExpiresIn <= 0 {
+		return 0
+	}
+	return time.Now().Add(time.Duration(token.ExpiresIn) * time.Second).Unix()
+}
+
 // invalidateSub2APIToken 只清掉失效的 access token 与过期时间，
 // 保留 username/password/refresh_token 供 forceRefreshSub2APIToken 续期。
+// 清哪一份取决于凭据来自哪里：渠道与账号各存各的 token，不能互相污染。
 func invalidateSub2APIToken(channel *channelpkg.Channel) {
+	credentials, err := sub2apiCredentials(channel)
+	if err != nil {
+		return
+	}
+	if credentials.Source == sub2apiCredentialSourceAccount {
+		if err := channelpkg.ClearUpstreamAccountAccessToken(credentials.AccountId); err != nil {
+			common.SysLog(fmt.Sprintf("sub2api account token invalidate failed: account_id=%d: %v", credentials.AccountId, err))
+		}
+		return
+	}
 	updateSub2APISettings(channel, func(settings *dto.ChannelOtherSettings) {
 		settings.Sub2APIAccessToken = ""
 		settings.Sub2APITokenExpiresAt = 0

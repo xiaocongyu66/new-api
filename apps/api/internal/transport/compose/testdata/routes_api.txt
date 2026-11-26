@@ -17,6 +17,7 @@ DELETE /api/subscription/admin/user_subscriptions/:id
 DELETE /api/system-info/instances/:node_name
 DELETE /api/system-info/stale-instances
 DELETE /api/token/:id
+DELETE /api/upstream-account/:id
 DELETE /api/user-insight/:id
 DELETE /api/user/:id
 DELETE /api/user/:id/2fa
@@ -142,6 +143,7 @@ GET /api/token/
 GET /api/token/:id
 GET /api/token/auto-groups
 GET /api/token/search
+GET /api/upstream-account/
 GET /api/uptime/status
 GET /api/usage/token/
 GET /api/user-agreement
@@ -258,6 +260,8 @@ POST /api/token/
 POST /api/token/:id/key
 POST /api/token/batch
 POST /api/token/batch/keys
+POST /api/upstream-account/
+POST /api/upstream-account/:id/test
 POST /api/user-insight/:id/client-ban
 POST /api/user-insight/client-ban
 POST /api/user/
@@ -324,6 +328,7 @@ PUT /api/redemption/
 PUT /api/subscription/admin/plans/:id
 PUT /api/subscription/self/preference
 PUT /api/token/
+PUT /api/upstream-account/
 PUT /api/user/
 PUT /api/user/self
 PUT /api/user/setting
