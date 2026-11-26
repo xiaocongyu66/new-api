@@ -561,6 +561,16 @@ export async function deleteDisabledMultiKeys(
 // Tag Operations
 // ============================================================================
 
+/** List all tags in use without loading channel payloads. */
+export async function getAllChannelTags(): Promise<{
+  success: boolean
+  message?: string
+  data?: { tags: string[] }
+}> {
+  const res = await api.get('/api/channel/tags')
+  return res.data
+}
+
 /**
  * Enable all channels with a specific tag
  */

@@ -50,6 +50,7 @@ GET /api/channel/route_unit/dispatch_policy
 GET /api/channel/search
 GET /api/channel/system_prompt_presets
 GET /api/channel/tag/models
+GET /api/channel/tags
 GET /api/channel/test
 GET /api/channel/test/:id
 GET /api/channel/update_balance

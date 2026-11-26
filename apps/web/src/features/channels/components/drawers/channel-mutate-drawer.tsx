@@ -64,6 +64,7 @@ import {
 } from '@/components/drawer-layout'
 import { JsonCodeEditor } from '@/components/json-code-editor'
 import { JsonEditor } from '@/components/json-editor'
+import { SearchableTextInput } from '@/components/searchable-text-input'
 import { MultiSelect } from '@/components/multi-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -127,6 +128,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   fetchModels,
+  getAllChannelTags,
   getAllModels,
   getChannel,
   getChannelKey,
@@ -660,6 +662,19 @@ function ChannelMutateDrawerContent({
     enabled: isPresented,
     staleTime: 10 * 60 * 1000,
   })
+  // Tags are fetched from a tags-only endpoint: a channel-list query would
+  // materialise every tagged channel just to derive the distinct tag names.
+  const { data: tagOptionsData } = useQuery({
+    queryKey: [...channelsQueryKeys.all, 'tag_options'],
+    queryFn: async () => {
+      const response = await getAllChannelTags()
+      return [...new Set(response.data?.tags ?? [])]
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+    },
+    enabled: isPresented,
+  })
 
   // Fetch prefill model groups
   const { data: prefillGroupsData, isLoading: isLoadingPrefillGroups } = useQuery({
@@ -871,6 +886,11 @@ function ChannelMutateDrawerContent({
     () => prefillGroupsData?.data || [],
     [prefillGroupsData]
   )
+  const tagOptions = useMemo(() => {
+    const tags = new Set(tagOptionsData ?? [])
+    if (currentTag?.trim()) tags.add(currentTag.trim())
+    return [...tags]
+  }, [tagOptionsData, currentTag])
 
   // Transform groups to multi-select options
   const groupOptions = useMemo(() => {
@@ -1484,6 +1504,9 @@ function ChannelMutateDrawerContent({
   // Handle successful submission
   const handleSuccess = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
+    queryClient.invalidateQueries({
+      queryKey: [...channelsQueryKeys.all, 'tag_options'],
+    })
     queryClient.invalidateQueries({ queryKey: ['channel_models'] })
     if (channelId) {
       queryClient.invalidateQueries({
@@ -3586,7 +3609,7 @@ function ChannelMutateDrawerContent({
                               icon={<FileText className='h-3.5 w-3.5' />}
                               iconTone='chart-3'
                             />
-                            <div className='grid gap-4 sm:grid-cols-2'>
+                            <div className='grid gap-4'>
                               <FormField
                                 control={form.control}
                                 name='tag'
@@ -3594,9 +3617,14 @@ function ChannelMutateDrawerContent({
                                   <FormItem>
                                     <FormLabel>{t('Tag')}</FormLabel>
                                     <FormControl>
-                                      <Input
+                                      <SearchableTextInput
+                                        value={field.value ?? ''}
+                                        onChange={(value) =>
+                                          field.onChange(value)
+                                        }
+                                        options={tagOptions}
                                         placeholder={t(FIELD_PLACEHOLDERS.TAG)}
-                                        {...field}
+                                        ariaLabel={t('Tag')}
                                       />
                                     </FormControl>
                                     <FormDescription>

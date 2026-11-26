@@ -1327,6 +1327,17 @@ func CountAllTags() (int64, error) {
 	return CountChannelTags(dbx.DB.Model(&Channel{}))
 }
 
+// GetAllTags returns every non-empty tag in use, without loading channels.
+func GetAllTags() ([]string, error) {
+	var tags []string
+	err := dbx.DB.Model(&Channel{}).
+		Where("tag is not null AND tag != ''").
+		Distinct("tag").
+		Order("tag").
+		Pluck("tag", &tags).Error
+	return tags, err
+}
+
 func CountChannelTags(query *gorm.DB) (int64, error) {
 	var total int64
 	err := query.Where("tag is not null AND tag != ''").Distinct("tag").Count(&total).Error
