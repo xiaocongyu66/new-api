@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -145,8 +145,11 @@ export function UpstreamAccountDialog({
   const { t } = useTranslation()
   const isUpdate = !!account
 
+  // schema 依赖 t（错误文案要翻译），用 useMemo 按 t 固定，
+  // 避免每次渲染都重建整棵 zod schema。
+  const formSchema = useMemo(() => buildFormSchema(t), [t])
   const form = useForm<UpstreamAccountFormValues>({
-    resolver: zodResolver(buildFormSchema(t)),
+    resolver: zodResolver(formSchema),
     defaultValues: DEFAULT_VALUES,
   })
 
@@ -205,7 +208,6 @@ export function UpstreamAccountDialog({
     }
   }
 
-  const derivedHost = deriveHost(form.watch('base_url'))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,8 +235,12 @@ export function UpstreamAccountDialog({
               <FormField
                 control={form.control}
                 name='base_url'
-                render={({ field }) => (
-                  <FormItem>
+                render={({ field }) => {
+                  // Controller 本来就只订阅 base_url；根级 form.watch
+                  // 会让每次按键重渲染整个弹窗，所以在这里派生 host。
+                  const derivedHost = deriveHost(field.value)
+                  return (
+                    <FormItem>
                     <FormLabel>{t('Base URL')}</FormLabel>
                     <FormControl>
                       <Input
@@ -253,9 +259,10 @@ export function UpstreamAccountDialog({
                             'The host is derived from the base URL and normalized by the server.'
                           )}
                     </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                      <FormMessage />
+                    </FormItem>
+                  )
+                }}
               />
 
               <div className='grid gap-4 sm:grid-cols-2'>

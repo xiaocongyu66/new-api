@@ -730,14 +730,26 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
 
   // Probe credentials stay in settings JSON. Empty strings are written so the
   // operator can clear a stored credential from the form.
+  //
+  // 过期时间属于 token，不属于渠道：手贴一个新 access token 时，原 token 的
+  // 旧 expires_at 必须一起作废。否则后端判它过期、跳过第 1 步直接走
+  // refresh/login，刚贴进去的 token 永远不会被使用，前端还会继续显示 Expired。
+  const originalAccessToken =
+    typeof settingsObj.sub2api_access_token === 'string'
+      ? settingsObj.sub2api_access_token
+      : ''
   const sub2apiAccessToken = formData.sub2api_access_token?.trim() || ''
+  const accessTokenChanged = sub2apiAccessToken !== originalAccessToken
   settingsObj.sub2api_username = formData.sub2api_username?.trim() || ''
   settingsObj.sub2api_password = formData.sub2api_password || ''
   settingsObj.sub2api_refresh_token =
     formData.sub2api_refresh_token?.trim() || ''
   settingsObj.sub2api_access_token = sub2apiAccessToken
   settingsObj.jk_group_id = formData.jk_group_id?.trim() || ''
-  if (
+  if (accessTokenChanged) {
+    // 0 = 未知：后端会先尝试用它，正好符合「手工贴入」的语义。
+    delete settingsObj.sub2api_token_expires_at
+  } else if (
     typeof formData.sub2api_token_expires_at === 'number' &&
     formData.sub2api_token_expires_at > 0
   ) {
