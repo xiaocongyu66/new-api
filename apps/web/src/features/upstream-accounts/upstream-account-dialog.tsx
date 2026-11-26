@@ -178,14 +178,23 @@ export function UpstreamAccountDialog({
   const isPending = createMutation.isPending || updateMutation.isPending
 
   const onSubmit = (values: UpstreamAccountFormValues) => {
+    // 掩码只用于展示。正常路径上表单值是空的，但用户可能手抄 placeholder、
+    // 或将来有人把 hint 塞进默认值——把 "PR7....org" 当新密码提交会直接毁掉
+    // 已存的凭据，而且后端只会当成一次正常改密，不会报错。这里显式丢弃。
+    const keepIfMasked = (value: string, hint?: string) =>
+      hint && value === hint ? '' : value
+
     const payload: UpstreamAccountPayload = {
       base_url: values.base_url.trim(),
       kind: values.kind,
       username: values.username.trim(),
-      password: values.password,
+      password: keepIfMasked(values.password, account?.password_hint),
       jk_group_id: values.jk_group_id.trim(),
-      access_token: values.access_token,
-      refresh_token: values.refresh_token,
+      access_token: keepIfMasked(values.access_token, account?.access_token_hint),
+      refresh_token: keepIfMasked(
+        values.refresh_token,
+        account?.refresh_token_hint
+      ),
       enabled: values.enabled,
     }
 
@@ -303,7 +312,12 @@ export function UpstreamAccountDialog({
                     <FormControl>
                       <Input
                         type='password'
-                        autoComplete='new-password'
+                        // 编辑态的语义是「留空 = 保留原值」。浏览器自带的
+                        // 强密码建议一旦被接受，就会在没有提示的情况下把上游
+                        // 凭据换掉，登录随即失效。
+                        autoComplete={
+                          account ? 'off' : 'new-password'
+                        }
                         placeholder={account?.password_hint || undefined}
                         {...field}
                       />

@@ -64,11 +64,18 @@ func accessToken(channel *channelpkg.Channel) string {
 }
 
 func (sub2APISource) Fetch(ctx context.Context, channel *channelpkg.Channel) (map[string][]Point, error) {
+	// 取数与鉴权必须共用同一个 base。凭据解析会把 base 归一化成 origin
+	// （去掉 base_url 上的面板路径），这里若再用渠道原值，带路径的渠道就会
+	// 出现「登录成功、/api/v1/usage 404」。
+	credentials, err := sub2apiCredentials(channel)
+	if err != nil {
+		return nil, err
+	}
 	token, err := resolveSub2APIToken(ctx, channel)
 	if err != nil {
 		return nil, err
 	}
-	base := strings.TrimRight(channel.GetBaseURL(), "/")
+	base := strings.TrimRight(credentials.BaseURL, "/")
 	if base == "" {
 		return nil, fmt.Errorf("channel has no base url")
 	}

@@ -171,9 +171,19 @@ func TestUpstreamAccountResponseDoesNotExposeSecrets(t *testing.T) {
 	}
 	assert.Contains(t, text, `"has_password":true`)
 	assert.Contains(t, text, `"has_token":true`)
-	// 掩码必须存在且不等于原值，前 3 后 3 保留。
-	assert.Contains(t, text, `"password_hint":"pw-....lue"`)
+	// 短密钥（<16）整段遮蔽：露前 3 后 3 会让 10 位密码只剩 4 位未知。
+	assert.Contains(t, text, `"password_hint":"••••••••"`)
 	assert.NotContains(t, text, "pw-secret-value")
+
+	// 长密钥才给前 3 后 3，用来辨认「是不是我存的那一条」。
+	long := &channelpkg.UpstreamAccount{
+		Password:    "sk-abcdefghijklmnopqrstuvwxyz",
+		AccessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.sig",
+	}
+	longResponse := long.ToResponse()
+	assert.Equal(t, "sk-....xyz", longResponse.PasswordHint)
+	assert.Equal(t, "eyJ....sig", longResponse.AccessTokenHint)
+	assert.Empty(t, longResponse.RefreshTokenHint)
 
 	// 模型本身也可能被别的 handler 直接序列化；json:"-" 必须同样兜住。
 	rawAccount, err := common.Marshal(account)

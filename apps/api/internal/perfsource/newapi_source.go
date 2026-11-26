@@ -28,7 +28,7 @@ func (newAPISource) Name() string { return "newapi" }
 // avg_latency_ms），所以对清单里的每个模型再取一次。只取能映射到本渠道
 // 声明模型的上游模型，避免无谓请求。
 func (newAPISource) Fetch(ctx context.Context, channel *channelpkg.Channel) (map[string][]Point, error) {
-	base := strings.TrimRight(channel.GetBaseURL(), "/")
+	base := channelOrigin(channel)
 	if base == "" {
 		return nil, fmt.Errorf("channel has no base url")
 	}

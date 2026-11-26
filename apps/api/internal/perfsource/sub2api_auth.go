@@ -71,6 +71,14 @@ func forceRefreshSub2APIToken(ctx context.Context, channel *channelpkg.Channel) 
 	return refreshSub2APIToken(ctx, channel, credentials)
 }
 
+// sub2apiCanRenew 判断这套凭据在 token 作废后还有没有办法换新的。
+func sub2apiCanRenew(credentials sub2apiCredentialSet) bool {
+	if strings.TrimSpace(credentials.RefreshToken) != "" {
+		return true
+	}
+	return strings.TrimSpace(credentials.Username) != "" && credentials.Password != ""
+}
+
 // sub2apiTokenExpired 按 expires_at > 0 && now >= expires_at - 60s 判定过期；
 // expires_at == 0 表示未知，直接尝试使用。
 func sub2apiTokenExpired(expiresAt int64, now time.Time) bool {
@@ -243,6 +251,12 @@ func sub2apiTokenExpiresAt(token *sub2apiAuthToken) int64 {
 func invalidateSub2APIToken(channel *channelpkg.Channel) {
 	credentials, err := sub2apiCredentials(channel)
 	if err != nil {
+		return
+	}
+	// 只有存在续期路径时才把作废持久化。渠道只配了一个 access token 时，
+	// 清库就等于把唯一凭据销毁：一次瞬时 401（上游重启、WAF 误判）之后，
+	// 下一轮会退化成“没配置凭据”，运维连“鉴权被拒”都看不到。
+	if !sub2apiCanRenew(credentials) {
 		return
 	}
 	if credentials.Source == sub2apiCredentialSourceAccount {

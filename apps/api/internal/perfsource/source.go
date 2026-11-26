@@ -107,3 +107,24 @@ func localAlias(aliases map[string]string, upstreamName string) string {
 	}
 	return upstreamName
 }
+
+// channelOrigin 把渠道 base_url 归一成 origin。
+//
+// 四档取数（newapi / sub2api / jk / local）打的都是上游根路径下的固定接口，
+// 而 base_url 常被填成带面板路径的形式（https://host/v1）。直接用原值会拼出
+// /v1/api/v1/... 或 /v1/jk/status.json 这种不存在的地址，表现为「这一档不可用」
+// 并静默回退，很难定位。归一化放在这里，四档共用同一套规则。
+// 解析失败时退回原值：宁可打错，也不要把一个能用的渠道直接判死。
+func channelOrigin(channel *channelpkg.Channel) string {
+	if channel == nil {
+		return ""
+	}
+	base := strings.TrimRight(strings.TrimSpace(channel.GetBaseURL()), "/")
+	if base == "" {
+		return ""
+	}
+	if origin, err := channelpkg.UpstreamAccountOrigin(base); err == nil {
+		return origin
+	}
+	return base
+}

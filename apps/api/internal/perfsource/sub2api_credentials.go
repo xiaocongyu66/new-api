@@ -43,10 +43,18 @@ func sub2apiCredentials(channel *channelpkg.Channel) (sub2apiCredentialSet, erro
 	}
 	baseURL := strings.TrimRight(strings.TrimSpace(channel.GetBaseURL()), "/")
 
+	// 鉴权与取数必须打同一个 origin。用户的 base_url 常常带着面板路径
+	// （https://host/v1 之类），而上游的 /api/v1/* 永远挂在根路径上；
+	// 两边各算各的就会出现「登录成功、取数 404」。
+	origin := baseURL
+	if resolved, err := channelpkg.UpstreamAccountOrigin(baseURL); err == nil {
+		origin = resolved
+	}
+
 	settings := channel.GetOtherSettings()
 	if sub2apiChannelHasCredentials(settings) {
 		return sub2apiCredentialSet{
-			BaseURL:        baseURL,
+			BaseURL:        origin,
 			AccessToken:    strings.TrimSpace(settings.Sub2APIAccessToken),
 			RefreshToken:   strings.TrimSpace(settings.Sub2APIRefreshToken),
 			Username:       strings.TrimSpace(settings.Sub2APIUsername),
@@ -70,7 +78,7 @@ func sub2apiCredentials(channel *channelpkg.Channel) (sub2apiCredentialSet, erro
 
 	accountBaseURL, originErr := channelpkg.UpstreamAccountOrigin(account.BaseURL)
 	if originErr != nil {
-		accountBaseURL = baseURL
+		accountBaseURL = origin
 	}
 	return sub2apiCredentialSet{
 		BaseURL:        accountBaseURL,

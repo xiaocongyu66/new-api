@@ -82,14 +82,15 @@ type UpstreamAccountResponse struct {
 }
 
 // maskSecret 把密钥折成「前 3 + .... + 后 3」。
-// 太短的值（<10）整段遮蔽：否则 8 位密码只剩 2 位未知，等于泄露。
+// 阈值取 16：10 位密码露出前 3 后 3 就只剩 4 位未知，等于把可爆破空间削掉
+// 大半；只有足够长的 API key 才适合露出两端做「是不是我存的那一条」的辨认。
 func maskSecret(secret string) string {
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		return ""
 	}
 	runes := []rune(secret)
-	if len(runes) < 10 {
+	if len(runes) < 16 {
 		return "••••••••"
 	}
 	return string(runes[:3]) + "...." + string(runes[len(runes)-3:])

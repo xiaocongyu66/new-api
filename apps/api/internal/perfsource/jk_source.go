@@ -48,7 +48,7 @@ type jkStatus struct {
 }
 
 func (jkSource) Fetch(ctx context.Context, channel *channelpkg.Channel) (map[string][]Point, error) {
-	base := strings.TrimRight(channel.GetBaseURL(), "/")
+	base := channelOrigin(channel)
 	if base == "" {
 		return nil, fmt.Errorf("channel has no base url")
 	}
