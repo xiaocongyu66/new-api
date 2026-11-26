@@ -59,6 +59,7 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodGet, path: "/health", permission: policy.ChannelRead, handler: handler.GetChannelModelHealth},
 	{method: http.MethodGet, path: "/request_stats", permission: policy.ChannelRead, handler: handler.GetChannelRequestStats},
 	{method: http.MethodGet, path: "/route_unit/", permission: policy.ChannelRead, handler: handler.GetRouteUnitViews},
+	{method: http.MethodGet, path: "/tags", permission: policy.ChannelRead, handler: handler.GetAllChannelTags},
 	{method: http.MethodGet, path: "/probe/overview", permission: policy.ChannelRead, handler: handler.GetProbeOverview},
 	{method: http.MethodPut, path: "/probe/settings", permission: policy.ChannelWrite, handler: handler.UpdateProbeSettings},
 	{method: http.MethodPut, path: "/probe/policy", permission: policy.ChannelWrite, handler: handler.UpdateProbePolicy},

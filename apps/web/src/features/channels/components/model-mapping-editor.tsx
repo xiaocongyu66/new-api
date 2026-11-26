@@ -16,23 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Code, PencilLine, Plus, Table, Trash2 } from 'lucide-react'
+import { Code, Plus, Table, Trash2 } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { JsonCodeEditor } from '@/components/json-code-editor'
+import { SearchableTextInput } from '@/components/searchable-text-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { PlazaModelEditorDialog } from './dialogs/plaza-model-alias-dialog'
 
 type ModelMappingEditorProps = {
   value: string
@@ -78,9 +70,8 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
   const [rows, setRows] = useState<MappingRow[]>([])
   const [jsonValue, setJsonValue] = useState(props.value)
   const [jsonError, setJsonError] = useState<string | null>(null)
-  const [plazaModels, setPlazaModels] = useState<string[]>([])
-  const [aliasDialogOpen, setAliasDialogOpen] = useState(false)
   const nextRowIdRef = useRef(0)
+  const lastEmittedValueRef = useRef<string | null>(null)
   const duplicateSources = useMemo(() => getDuplicateSources(rows), [rows])
   const plazaOptions = useMemo(
     () =>
@@ -88,10 +79,9 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
         new Set([
           ...(props.plazaModelOptions ?? []),
           ...rows.map((row) => row.from.trim()).filter(Boolean),
-          ...plazaModels,
         ])
       ),
-    [props.plazaModelOptions, rows, plazaModels]
+    [props.plazaModelOptions, rows]
   )
   const upstreamOptions = useMemo(
     () =>
@@ -162,6 +152,9 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
 
   // Parse JSON to rows when value changes externally
   useEffect(() => {
+    const emittedValue = lastEmittedValueRef.current
+    lastEmittedValueRef.current = null
+    if (emittedValue === props.value) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setJsonValue(props.value)
     parseJsonToRows(props.value)
@@ -181,20 +174,24 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
     return JSON.stringify(obj, null, 2)
   }
 
+  const emitValue = (json: string) => {
+    lastEmittedValueRef.current = json
+    setJsonValue(json)
+    props.onChange(json)
+  }
+
   const syncRows = (updatedRows: MappingRow[]) => {
     setRows(updatedRows)
     const duplicates = getDuplicateSources(updatedRows)
     if (duplicates.length > 0) {
       setJsonError(t('Duplicate source model mappings are not allowed'))
-      setJsonValue(DUPLICATE_MAPPING_SENTINEL)
-      props.onChange(DUPLICATE_MAPPING_SENTINEL)
+      emitValue(DUPLICATE_MAPPING_SENTINEL)
       return
     }
 
     const json = convertRowsToJson(updatedRows)
     setJsonError(null)
-    setJsonValue(json)
-    props.onChange(json)
+    emitValue(json)
   }
 
   const handleAddRow = () => {
@@ -223,8 +220,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
 
 
   const handleJsonChange = (newJson: string) => {
-    setJsonValue(newJson)
-    props.onChange(newJson)
+    emitValue(newJson)
     parseJsonToRows(newJson)
   }
 
@@ -234,8 +230,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       null,
       2
     )
-    setJsonValue(template)
-    props.onChange(template)
+    emitValue(template)
     parseJsonToRows(template)
   }
 
@@ -244,9 +239,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
     if (nextMode === 'json') {
       const duplicates = getDuplicateSources(rows)
       if (duplicates.length === 0) {
-        const json = convertRowsToJson(rows)
-        setJsonValue(json)
-        props.onChange(json)
+        emitValue(convertRowsToJson(rows))
       }
       setMode('json')
       return
@@ -301,73 +294,27 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
         <TabsContent value='visual' className='space-y-2'>
           {rows.length > 0 ? (
             <div className='space-y-2'>
-              <div className='flex flex-wrap items-center gap-2 text-xs font-medium'>
-                <span className='min-w-[8rem]'>{t('Plaza Model')}</span>
-                <span className='min-w-[8rem]'>{t('Upstream Model')}</span>
-              </div>
               {rows.map((row) => (
                 <div
                   key={row.id}
-                  className='flex flex-wrap items-center gap-2 transition-all duration-200'
+                  className='flex items-center gap-2 transition-all duration-200'
                 >
-                  <Select
+                  <SearchableTextInput
                     value={row.from}
-                    onValueChange={(value) =>
-                      handleRowChange(row.id, 'from', value ?? '')
-                    }
+                    onChange={(value) => handleRowChange(row.id, 'from', value)}
+                    options={plazaOptions}
+                    placeholder='gpt-3.5-turbo'
+                    ariaLabel={t('Plaza Model')}
                     disabled={props.disabled}
-                  >
-                    <SelectTrigger
-                      size='sm'
-                      className='max-w-full min-w-[8rem] text-xs transition-all duration-200'
-                      aria-label={t('Plaza Model')}
-                    >
-                      <SelectValue placeholder={t('Select Model')} />
-                    </SelectTrigger>
-                    <SelectContent
-                      alignItemWithTrigger={false}
-                      className='min-w-[14rem] max-w-[min(22rem,90vw)] transition-all duration-150'
-                    >
-                      <SelectGroup>
-                        {plazaOptions.map((model) => (
-                          <SelectItem key={model} value={model}>
-                            <span className='block max-w-[18rem] truncate'>
-                              {model}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                  <Select
+                  />
+                  <SearchableTextInput
                     value={row.to}
-                    onValueChange={(value) =>
-                      handleRowChange(row.id, 'to', value ?? '')
-                    }
+                    onChange={(value) => handleRowChange(row.id, 'to', value)}
+                    options={upstreamOptions}
+                    placeholder='gpt-3.5-turbo-0125'
+                    ariaLabel={t('Upstream Model')}
                     disabled={props.disabled}
-                  >
-                    <SelectTrigger
-                      size='sm'
-                      className='max-w-full min-w-[8rem] text-xs transition-all duration-200'
-                      aria-label={t('Upstream Model')}
-                    >
-                      <SelectValue placeholder={t('Select Model')} />
-                    </SelectTrigger>
-                    <SelectContent
-                      alignItemWithTrigger={false}
-                      className='min-w-[14rem] max-w-[min(22rem,90vw)] transition-all duration-150'
-                    >
-                      <SelectGroup>
-                        {upstreamOptions.map((model) => (
-                          <SelectItem key={model} value={model}>
-                            <span className='block max-w-[18rem] truncate'>
-                              {model}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  />
                   <Button
                     type='button'
                     variant='ghost'
@@ -400,17 +347,6 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
             <Plus className='mr-2 h-4 w-4' />
             {t('Add Mapping')}
           </Button>
-          <Button
-            type='button'
-            variant='ghost'
-            size='sm'
-            onClick={() => setAliasDialogOpen(true)}
-            disabled={props.disabled}
-            className='w-full justify-start transition-colors duration-150'
-          >
-            <PencilLine className='mr-2 h-3.5 w-3.5' />
-            {t('Edit Plaza Models')}
-          </Button>
         </TabsContent>
         <TabsContent value='json'>
           <JsonCodeEditor
@@ -425,14 +361,6 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
         </TabsContent>
       </Tabs>
 
-      {aliasDialogOpen && (
-        <PlazaModelEditorDialog
-          open
-          onOpenChange={setAliasDialogOpen}
-          models={plazaOptions}
-          onSave={setPlazaModels}
-        />
-      )}
     </div>
   )
 }

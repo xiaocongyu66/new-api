@@ -772,6 +772,16 @@ type ChannelTag struct {
 	HeaderOverride *string `json:"header_override"`
 }
 
+// GetAllChannelTags returns the distinct tags currently used by channels.
+func GetAllChannelTags(c contract.Context) {
+	tags, err := channelpkg.GetAllTags()
+	if err != nil {
+		common.CtxApiError(c, err)
+		return
+	}
+	common.CtxApiSuccess(c, common.H{"tags": tags})
+}
+
 func DisableTagChannels(c contract.Context) {
 	channelTag := ChannelTag{}
 	err := c.BindJSON(&channelTag)
