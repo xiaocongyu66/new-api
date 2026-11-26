@@ -6593,6 +6593,21 @@
     "Per-token pricing needs at least one price": "按量計費至少要填寫一項價格",
     "Failed to load manual prices": "載入手工價格失敗",
     "Delete manual price?": "刪除手工價格？",
-    "This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered.": "將刪除 {{model}} 的手工價格，在重新錄入前該渠道不再計入成本。"
+    "This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered.": "將刪除 {{model}} 的手工價格，在重新錄入前該渠道不再計入成本。",
+    "Credentials used by upstream health probes. Leave a field empty to fall back to the channel key or the public monitor.": "上游健康探活使用的憑證。留空的欄位會回退到渠道金鑰或公開監控資料。",
+    "Upstream Probe Credentials": "上游探活憑證",
+    "Sub2API Username": "Sub2API 用戶名",
+    "Sub2API Password": "Sub2API 密碼",
+    "Sub2API Refresh Token": "Sub2API 重新整理令牌",
+    "Sub2API Access Token": "Sub2API 存取令牌",
+    "JK Group ID": "JK 群組 ID",
+    "Used to sign in to the sub2api panel when the access token is missing or expired.": "存取令牌缺失或過期時，用於登入 Sub2API 面板。",
+    "Stored in the channel settings and used only to renew the sub2api access token.": "儲存在渠道設定中，僅用於續期 Sub2API 存取令牌。",
+    "Renews the sub2api access token without signing in again.": "無需重新登入即可續期 Sub2API 存取令牌。",
+    "Bearer token for the sub2api usage endpoints. Leave empty to obtain one with the credentials above.": "Sub2API 用量介面的 Bearer 令牌。留空時使用上方憑證取得。",
+    "Group ID in the public /jk/status.json monitor. Leave empty to infer it from the channel models.": "公開 /jk/status.json 監控中的群組 ID。留空時根據渠道模型推斷。",
+    "Token Status": "令牌狀態",
+    "Not configured": "未設定",
+    "Configured (expiry unknown)": "已設定（到期時間未知）"
   }
 }

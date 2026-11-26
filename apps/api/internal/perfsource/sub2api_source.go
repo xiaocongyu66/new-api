@@ -26,10 +26,12 @@ type sub2APISource struct{}
 func (sub2APISource) Name() string { return "sub2api" }
 
 // usagePage 是分页列表的通用外壳。
+//
+// 不声明 code/message：这两个字段从未被使用，而 sub2api 各接口的 code 类型
+// 并不统一（用量接口返回数字 0，登录接口也是数字）。声明成 string 会让
+// json 解码直接失败，把「这一级可用」误判成「这一级不可用」。
 type usagePage[T any] struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Data    struct {
+	Data struct {
 		Items    []T   `json:"items"`
 		Total    int64 `json:"total"`
 		Page     int   `json:"page"`
@@ -62,9 +64,9 @@ func accessToken(channel *channelpkg.Channel) string {
 }
 
 func (sub2APISource) Fetch(ctx context.Context, channel *channelpkg.Channel) (map[string][]Point, error) {
-	token := accessToken(channel)
-	if token == "" {
-		return nil, fmt.Errorf("sub2api access token not configured")
+	token, err := resolveSub2APIToken(ctx, channel)
+	if err != nil {
+		return nil, err
 	}
 	base := strings.TrimRight(channel.GetBaseURL(), "/")
 	if base == "" {
@@ -74,6 +76,16 @@ func (sub2APISource) Fetch(ctx context.Context, channel *channelpkg.Channel) (ma
 	endDate := time.Now().Format("2006-01-02")
 
 	okItems, errItems, err := fetchUsageLogs(ctx, base, token, startDate, endDate)
+	if err != nil && isSub2APIAuthError(err) {
+		// 本地 token 被上游拒绝（过期/被吊销）：先作废旧值，再强制续期一次。
+		// 只重试一次，避免上游持续 401 时反复登录触发风控。
+		invalidateSub2APIToken(channel)
+		token, err = forceRefreshSub2APIToken(ctx, channel)
+		if err != nil {
+			return nil, fmt.Errorf("sub2api auth refresh after unauthorized response failed: %w", err)
+		}
+		okItems, errItems, err = fetchUsageLogs(ctx, base, token, startDate, endDate)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -146,6 +158,26 @@ func (sub2APISource) Fetch(ctx context.Context, channel *channelpkg.Channel) (ma
 		return nil, fmt.Errorf("sub2api usage has no model matching this channel")
 	}
 	return out, nil
+}
+
+// isSub2APIAuthError 判断取数错误是否来自上游 401/403。
+// upstreamfetch.Get 把状态码折叠进错误文本：401 是 "upstream status 401"，
+// 403 与 404 共用 "upstream has no such endpoint: N"。sub2api 的成功流水
+// 接口只在鉴权失败时返回 403，因此那里把 403 视为需要续期的信号。
+// 但失败流水接口的 403 还可能是管理员关闭了「错误请求」视图，换 token
+// 也打不开，必须保持「错误流水不可用」的原语义，不能当成鉴权失败重试。
+func isSub2APIAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "upstream status 401") || strings.Contains(msg, "upstream status 403") {
+		return true
+	}
+	if strings.Contains(msg, "upstream has no such endpoint: 403") {
+		return !strings.Contains(msg, "sub2api error log unavailable")
+	}
+	return false
 }
 
 // fetchUsageLogs 拉取窗口内的成功与失败流水（分页、限页数防止过大）。

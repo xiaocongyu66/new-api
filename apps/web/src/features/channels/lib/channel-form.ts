@@ -297,6 +297,13 @@ export const channelFormSchema = z
     allow_speed: z.boolean().optional(), // Anthropic: speed mode control
     claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
     disable_task_polling_sleep: z.boolean().optional(),
+    // Upstream probe credentials (stored in settings JSON)
+    sub2api_username: z.string().optional(),
+    sub2api_password: z.string().optional(),
+    sub2api_refresh_token: z.string().optional(),
+    sub2api_access_token: z.string().optional(),
+    sub2api_token_expires_at: z.number().optional(),
+    jk_group_id: z.string().optional(),
     // Upstream model update settings (stored in settings JSON)
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
@@ -471,6 +478,13 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   allow_speed: false,
   claude_beta_query: false,
   disable_task_polling_sleep: false,
+  // Upstream probe credentials
+  sub2api_username: '',
+  sub2api_password: '',
+  sub2api_refresh_token: '',
+  sub2api_access_token: '',
+  sub2api_token_expires_at: 0,
+  jk_group_id: '',
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
@@ -550,6 +564,12 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
+  let sub2apiUsername = ''
+  let sub2apiPassword = ''
+  let sub2apiRefreshToken = ''
+  let sub2apiAccessToken = ''
+  let sub2apiTokenExpiresAt = 0
+  let jkGroupId = ''
 
   if (channel.settings) {
     try {
@@ -566,6 +586,27 @@ export function transformChannelToFormDefaults(
       allowSpeed = parsed.allow_speed === true
       claudeBetaQuery = parsed.claude_beta_query === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
+      sub2apiUsername =
+        typeof parsed.sub2api_username === 'string'
+          ? parsed.sub2api_username
+          : ''
+      sub2apiPassword =
+        typeof parsed.sub2api_password === 'string'
+          ? parsed.sub2api_password
+          : ''
+      sub2apiRefreshToken =
+        typeof parsed.sub2api_refresh_token === 'string'
+          ? parsed.sub2api_refresh_token
+          : ''
+      sub2apiAccessToken =
+        typeof parsed.sub2api_access_token === 'string'
+          ? parsed.sub2api_access_token
+          : ''
+      sub2apiTokenExpiresAt = Number(parsed.sub2api_token_expires_at) || 0
+      jkGroupId =
+        parsed.jk_group_id === undefined || parsed.jk_group_id === null
+          ? ''
+          : String(parsed.jk_group_id)
       upstreamModelUpdateCheckEnabled =
         parsed.upstream_model_update_check_enabled === true
       upstreamModelUpdateAutoSyncEnabled =
@@ -624,6 +665,12 @@ export function transformChannelToFormDefaults(
     allow_speed: allowSpeed,
     claude_beta_query: claudeBetaQuery,
     disable_task_polling_sleep: disableTaskPollingSleep,
+    sub2api_username: sub2apiUsername,
+    sub2api_password: sub2apiPassword,
+    sub2api_refresh_token: sub2apiRefreshToken,
+    sub2api_access_token: sub2apiAccessToken,
+    sub2api_token_expires_at: sub2apiTokenExpiresAt,
+    jk_group_id: jkGroupId,
     allow_safety_identifier: allowSafetyIdentifier,
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
@@ -679,6 +726,22 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       // eslint-disable-next-line no-console
       console.error('Failed to parse existing settings:', error)
     }
+  }
+
+  // Probe credentials stay in settings JSON. Empty strings are written so the
+  // operator can clear a stored credential from the form.
+  const sub2apiAccessToken = formData.sub2api_access_token?.trim() || ''
+  settingsObj.sub2api_username = formData.sub2api_username?.trim() || ''
+  settingsObj.sub2api_password = formData.sub2api_password || ''
+  settingsObj.sub2api_refresh_token =
+    formData.sub2api_refresh_token?.trim() || ''
+  settingsObj.sub2api_access_token = sub2apiAccessToken
+  settingsObj.jk_group_id = formData.jk_group_id?.trim() || ''
+  if (
+    typeof formData.sub2api_token_expires_at === 'number' &&
+    formData.sub2api_token_expires_at > 0
+  ) {
+    settingsObj.sub2api_token_expires_at = formData.sub2api_token_expires_at
   }
 
   // Add vertex_key_type for Vertex AI channels (type 41)

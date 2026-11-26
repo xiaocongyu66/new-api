@@ -1,0 +1,18 @@
+{
+  "strategy": "api",
+  "url": "/api/v1/model-plaza",
+  "group_of": "data.groups",
+  "group_name": "name",
+  "group_values": { "rate_multiplier": "rate_multiplier" },
+  "rows": "models",
+  "key": "name",
+  "values": {
+    "input_price": "pricing.input_price",
+    "output_price": "pricing.output_price",
+    "cache_read_price": "pricing.cache_read_price",
+    "per_request_price": "pricing.per_request_price"
+  },
+  "numeric": ["input_price", "output_price"],
+  "min": 0,
+  "max": 1
+}

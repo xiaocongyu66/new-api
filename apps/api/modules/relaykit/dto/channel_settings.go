@@ -159,6 +159,16 @@ type ChannelOtherSettings struct {
 	// 探活用它调用 /api/v1/usage 与 /api/v1/usage/errors 派生成功率与延迟；
 	// 中转密钥（sk-...）对这两个接口无效，必须单独配置。
 	Sub2APIAccessToken string `json:"sub2api_access_token,omitempty"`
+	// Sub2APIRefreshToken 用来在 access token 过期后换新 token；sub2api 每次
+	// refresh 都会轮换 refresh token，所以拿到新值后必须写回。
+	Sub2APIRefreshToken string `json:"sub2api_refresh_token,omitempty"`
+	// Sub2APIUsername / Sub2APIPassword 是 sub2api 面板账号，仅在 refresh
+	// 也失效时用于兜底登录（登录接口的 email 字段即用户名）。
+	Sub2APIUsername string `json:"sub2api_username,omitempty"`
+	Sub2APIPassword string `json:"sub2api_password,omitempty"`
+	// Sub2APITokenExpiresAt 是 access token 的过期时间（Unix 秒）。
+	// 0 表示未知，此时直接尝试使用现有 token。
+	Sub2APITokenExpiresAt int64 `json:"sub2api_token_expires_at,omitempty"`
 	// JKGroupID 是该上游公开监控页里的分组 id（/jk/status.json 的 groups[].id）。
 	// 监控数据按上游的组组织；留空时探活会用渠道密钥的可访问模型集合反查，
 	// 反查不唯一则放弃这一级，不会猜。

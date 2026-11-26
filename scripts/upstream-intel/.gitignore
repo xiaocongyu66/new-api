@@ -1,0 +1,4 @@
+out/
+state/
+scripts/__pycache__/
+*.pyc

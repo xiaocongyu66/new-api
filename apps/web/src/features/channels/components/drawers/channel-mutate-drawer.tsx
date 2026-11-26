@@ -309,6 +309,8 @@ const ADVANCED_SETTINGS_SECTION_IDS = {
   overrideRules: 'channel-section-advanced-override-rules',
   extraSettings: 'channel-section-advanced-extra-settings',
   fieldPassthrough: 'channel-section-advanced-field-passthrough',
+  upstreamProbeCredentials:
+    'channel-section-advanced-upstream-probe-credentials',
   upstreamModelDetection: 'channel-section-advanced-upstream-model-detection',
 } as const
 const CHANNEL_EDITOR_MAIN_SECTION_IDS = [
@@ -354,6 +356,12 @@ const SENSITIVE_FORM_FIELDS = [
   'allow_speed',
   'claude_beta_query',
   'disable_task_polling_sleep',
+  'sub2api_username',
+  'sub2api_password',
+  'sub2api_refresh_token',
+  'sub2api_access_token',
+  'sub2api_token_expires_at',
+  'jk_group_id',
   'upstream_model_update_check_enabled',
   'upstream_model_update_auto_sync_enabled',
   'upstream_model_update_ignored_models',
@@ -756,6 +764,12 @@ function ChannelMutateDrawerContent({
   const currentClaudeBetaQuery = useWatch({ control: form.control, name: 'claude_beta_query' })
   const currentUpstreamModelUpdateAutoSyncEnabled = useWatch({ control: form.control, name: 'upstream_model_update_auto_sync_enabled' })
   const currentUpstreamModelUpdateIgnoredModels = useWatch({ control: form.control, name: 'upstream_model_update_ignored_models' })
+  const currentSub2apiUsername = useWatch({ control: form.control, name: 'sub2api_username' })
+  const currentSub2apiPassword = useWatch({ control: form.control, name: 'sub2api_password' })
+  const currentSub2apiRefreshToken = useWatch({ control: form.control, name: 'sub2api_refresh_token' })
+  const currentSub2apiAccessToken = useWatch({ control: form.control, name: 'sub2api_access_token' })
+  const currentSub2apiTokenExpiresAt = useWatch({ control: form.control, name: 'sub2api_token_expires_at' })
+  const currentJkGroupId = useWatch({ control: form.control, name: 'jk_group_id' })
   const shouldPreviewUnsavedModels =
     !isEditing ||
     (currentType === CHANNEL_TYPE_ADVANCED_CUSTOM && canEditSensitive)
@@ -1031,6 +1045,26 @@ function ChannelMutateDrawerContent({
       currentUpstreamModelUpdateAutoSyncEnabled ||
       currentUpstreamModelUpdateIgnoredModels?.trim()
   )
+  const upstreamProbeCredentialsConfigured = Boolean(
+    currentSub2apiUsername?.trim() ||
+      currentSub2apiPassword ||
+      currentSub2apiRefreshToken?.trim() ||
+      currentSub2apiAccessToken?.trim() ||
+      currentJkGroupId?.trim()
+  )
+  const sub2apiTokenExpiresAt = Number(currentSub2apiTokenExpiresAt) || 0
+  let sub2apiTokenStatus = t('Not configured')
+  if (currentSub2apiAccessToken?.trim()) {
+    if (sub2apiTokenExpiresAt <= 0) {
+      sub2apiTokenStatus = t('Configured (expiry unknown)')
+    } else if (sub2apiTokenExpiresAt * 1000 <= Date.now()) {
+      sub2apiTokenStatus = t('Expired')
+    } else {
+      sub2apiTokenStatus = `${t('Expires at')}: ${formatUnixTime(
+        sub2apiTokenExpiresAt
+      )}`
+    }
+  }
   const advancedNavItems: ChannelEditorNavItem[] = [
     {
       id: ADVANCED_SETTINGS_SECTION_IDS.routingStrategy,
@@ -1070,6 +1104,13 @@ function ChannelMutateDrawerContent({
       configured: fieldPassthroughConfigured,
     })
   }
+  advancedNavItems.push({
+    id: ADVANCED_SETTINGS_SECTION_IDS.upstreamProbeCredentials,
+    title: t('Upstream Probe Credentials'),
+    status: advancedStatus,
+    icon: <KeyRound className='h-4 w-4' aria-hidden='true' />,
+    configured: upstreamProbeCredentialsConfigured,
+  })
   if (MODEL_FETCHABLE_TYPES.has(currentType)) {
     advancedNavItems.push({
       id: ADVANCED_SETTINGS_SECTION_IDS.upstreamModelDetection,
@@ -4381,6 +4422,157 @@ function ChannelMutateDrawerContent({
                             </fieldset>
                           </div>
                         )}
+
+                        <div
+                          id={
+                            ADVANCED_SETTINGS_SECTION_IDS.upstreamProbeCredentials
+                          }
+                          className={configuredAdvancedSectionClassName(
+                            'scroll-mt-4 flex flex-col gap-4 pb-6 last:pb-0',
+                            upstreamProbeCredentialsConfigured
+                          )}
+                        >
+                          <CardHeading
+                            title={t('Upstream Probe Credentials')}
+                            icon={<KeyRound className='h-4 w-4' />}
+                            iconTone='warning'
+                          />
+                          <p className='text-muted-foreground text-xs leading-relaxed'>
+                            {t(
+                              'Credentials used by upstream health probes. Leave a field empty to fall back to the channel key or the public monitor.'
+                            )}
+                          </p>
+                          <fieldset
+                            disabled={sensitiveLocked}
+                            className='border-0 p-0 space-y-4 disabled:opacity-60'
+                          >
+                            <div className='grid gap-4 sm:grid-cols-2'>
+                              <FormField
+                                control={form.control}
+                                name='sub2api_username'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t('Sub2API Username')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        autoComplete='off'
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Used to sign in to the sub2api panel when the access token is missing or expired.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name='sub2api_password'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t('Sub2API Password')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type='password'
+                                        autoComplete='new-password'
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Stored in the channel settings and used only to renew the sub2api access token.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name='sub2api_refresh_token'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t('Sub2API Refresh Token')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type='password'
+                                        autoComplete='off'
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Renews the sub2api access token without signing in again.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name='sub2api_access_token'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t('Sub2API Access Token')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type='password'
+                                        autoComplete='off'
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Bearer token for the sub2api usage endpoints. Leave empty to obtain one with the credentials above.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name='jk_group_id'
+                                render={({ field }) => (
+                                  <FormItem className='sm:col-span-2'>
+                                    <FormLabel>{t('JK Group ID')}</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        inputMode='numeric'
+                                        autoComplete='off'
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Group ID in the public /jk/status.json monitor. Leave empty to infer it from the channel models.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                            <div className='text-muted-foreground flex flex-wrap items-center gap-2 border-t pt-3 text-xs'>
+                              <span className='text-foreground font-medium'>
+                                {t('Token Status')}:
+                              </span>
+                              <span>{sub2apiTokenStatus}</span>
+                            </div>
+                          </fieldset>
+                        </div>
 
                         {MODEL_FETCHABLE_TYPES.has(currentType) && (
                           <div

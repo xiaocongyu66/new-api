@@ -6588,6 +6588,21 @@
     "Per-token pricing needs at least one price": "Per-token pricing needs at least one price",
     "Failed to load manual prices": "Failed to load manual prices",
     "Delete manual price?": "Delete manual price?",
-    "This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered.": "This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered."
+    "This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered.": "This removes the manual price for {{model}}. The channel will stop being costed until a new price is entered.",
+    "Credentials used by upstream health probes. Leave a field empty to fall back to the channel key or the public monitor.": "Credentials used by upstream health probes. Leave a field empty to fall back to the channel key or the public monitor.",
+    "Upstream Probe Credentials": "Upstream Probe Credentials",
+    "Sub2API Username": "Sub2API Username",
+    "Sub2API Password": "Sub2API Password",
+    "Sub2API Refresh Token": "Sub2API Refresh Token",
+    "Sub2API Access Token": "Sub2API Access Token",
+    "JK Group ID": "JK Group ID",
+    "Used to sign in to the sub2api panel when the access token is missing or expired.": "Used to sign in to the sub2api panel when the access token is missing or expired.",
+    "Stored in the channel settings and used only to renew the sub2api access token.": "Stored in the channel settings and used only to renew the sub2api access token.",
+    "Renews the sub2api access token without signing in again.": "Renews the sub2api access token without signing in again.",
+    "Bearer token for the sub2api usage endpoints. Leave empty to obtain one with the credentials above.": "Bearer token for the sub2api usage endpoints. Leave empty to obtain one with the credentials above.",
+    "Group ID in the public /jk/status.json monitor. Leave empty to infer it from the channel models.": "Group ID in the public /jk/status.json monitor. Leave empty to infer it from the channel models.",
+    "Token Status": "Token Status",
+    "Not configured": "Not configured",
+    "Configured (expiry unknown)": "Configured (expiry unknown)"
   }
 }

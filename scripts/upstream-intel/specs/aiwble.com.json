@@ -1,0 +1,16 @@
+{
+  "strategy": "api",
+  "url": "/api/pricing",
+  "rows": "data",
+  "key": "model_name",
+  "values": {
+    "model_ratio": "model_ratio",
+    "completion_ratio": "completion_ratio",
+    "model_price": "model_price",
+    "quota_type": "quota_type",
+    "enable_groups": "enable_groups"
+  },
+  "numeric": ["model_ratio", "model_price"],
+  "min": 0,
+  "max": 100000
+}
