@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Box,
   CreditCard,
-  KeyRound,
   Network,
   Radio,
   ScanSearch,
@@ -50,20 +49,13 @@ export type AdminNavigationItem = {
 
 export const ADMIN_NAVIGATION: readonly AdminNavigationItem[] = [
   { id: 'channels', labelKey: 'admin.channels', to: '/admin/channels', icon: Radio },
-  // 上游价格页从「渠道 > 上游同步」页签抽出：自动同步与手工价格合为一个页面。
+  // 上游价格与上游账号合为一个页面（价格对比 / 手工价格 / 上游账号三个页签），
+  // 侧边栏只保留一个入口。
   {
-    id: 'upstream-prices',
-    labelKey: 'admin.upstreamPrices',
+    id: 'upstream',
+    labelKey: 'admin.upstream',
     to: '/admin/upstream-prices',
     icon: Tags,
-    requiredCapability: { resource: 'system', action: 'settings' },
-  },
-  // 上游账号与价格页同属上游治理，放在同一组入口。
-  {
-    id: 'upstream-accounts',
-    labelKey: 'admin.upstreamAccounts',
-    to: '/admin/upstream-accounts',
-    icon: KeyRound,
     requiredCapability: { resource: 'system', action: 'settings' },
   },
   { id: 'models', labelKey: 'admin.models', to: '/admin/models/$section', params: { section: 'metadata' }, icon: Box },

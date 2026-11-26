@@ -18,10 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createLazyFileRoute } from '@tanstack/react-router'
 
-import { UpstreamAccounts } from '@/features/upstream-accounts'
-
+// The route redirects to /admin/upstream-prices in beforeLoad; this lazy
+// entry only keeps the generated route tree wired to the file.
 export const Route = createLazyFileRoute(
   '/_authenticated/admin/upstream-accounts'
-)({
-  component: UpstreamAccounts,
-})
+)({})

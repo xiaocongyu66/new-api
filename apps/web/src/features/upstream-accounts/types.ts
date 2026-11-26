@@ -26,9 +26,13 @@ export interface UpstreamAccount {
   kind: UpstreamAccountKind
   username: string
   jk_group_id: string
-  // Secrets are write-only: the API returns has_* flags and never the values.
+  // Secrets are write-only: the API returns has_* flags, never the values,
+  // plus masked hints so the edit form can show that something is stored.
   has_password: boolean
   has_token: boolean
+  password_hint: string
+  access_token_hint: string
+  refresh_token_hint: string
   token_expires_at: number
   enabled: boolean
   last_test_at: number

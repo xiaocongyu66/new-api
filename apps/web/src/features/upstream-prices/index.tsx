@@ -23,17 +23,19 @@ import { Main } from '@/components/layout'
 import { PageFooterProvider } from '@/components/layout/components/page-footer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SettingsPageProvider } from '@/features/system-settings/components/settings-page-context'
+import { UpstreamAccounts } from '@/features/upstream-accounts'
 
 import { ManualUpstreamPrices } from './manual-upstream-prices'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
 
-export type UpstreamPriceTab = 'auto' | 'manual'
+export type UpstreamPriceTab = 'auto' | 'manual' | 'accounts'
 
 /**
- * Upstream price page. Two tabs share the same subject (what an upstream
- * charges us): `auto` fetches /api/pricing and compares it with local pricing,
- * `manual` holds operator-entered prices for upstreams that expose no pricing
- * endpoint at all.
+ * Upstream governance page. Three tabs share the same subject (what an
+ * upstream charges us and how we reach it): `auto` fetches /api/pricing and
+ * compares it with local pricing, `manual` holds operator-entered prices for
+ * upstreams that expose no pricing endpoint at all, and `accounts` stores the
+ * panel credentials reused by probes and usage sync.
  */
 export function UpstreamPrices() {
   const { t } = useTranslation()
@@ -58,7 +60,7 @@ export function UpstreamPrices() {
             <header className='shrink-0 space-y-2 px-3 pt-3 pb-3 sm:px-4 sm:pt-5'>
               <div className='flex flex-wrap items-center gap-3'>
                 <h1 className='shrink-0 text-xl font-semibold tracking-tight sm:text-2xl'>
-                  {t('Upstream prices')}
+                  {t('Upstream')}
                 </h1>
                 <div
                   ref={setActionsContainer}
@@ -66,7 +68,7 @@ export function UpstreamPrices() {
                 />
               </div>
               <div className='no-scrollbar w-full max-w-full overflow-x-auto overflow-y-hidden sm:overflow-visible'>
-                <TabsList className='flex w-max flex-nowrap sm:grid sm:w-fit sm:grid-cols-2'>
+                <TabsList className='flex w-max flex-nowrap sm:grid sm:w-fit sm:grid-cols-3'>
                   <TabsTrigger
                     value='auto'
                     className='flex-none px-4 text-sm max-sm:px-3'
@@ -78,6 +80,12 @@ export function UpstreamPrices() {
                     className='flex-none px-4 text-sm max-sm:px-3'
                   >
                     {t('Manual prices')}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value='accounts'
+                    className='flex-none px-4 text-sm max-sm:px-3'
+                  >
+                    {t('Upstream accounts')}
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -104,6 +112,13 @@ export function UpstreamPrices() {
                     setAnalysisRefreshKey((key) => key + 1)
                   }
                 />
+              </TabsContent>
+              <TabsContent
+                value='accounts'
+                keepMounted
+                className='m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-hidden:hidden'
+              >
+                <UpstreamAccounts active={tab === 'accounts'} />
               </TabsContent>
             </div>
           </Tabs>

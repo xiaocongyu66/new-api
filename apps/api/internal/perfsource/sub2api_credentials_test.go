@@ -164,11 +164,16 @@ func TestUpstreamAccountResponseDoesNotExposeSecrets(t *testing.T) {
 	for _, secret := range []string{"pw-secret-value", "at-secret-value", "rt-secret-value"} {
 		assert.NotContains(t, text, secret, "响应不得回显凭据值")
 	}
-	for _, field := range []string{`"password"`, `"access_token"`, `"refresh_token"`} {
+	// 字段名断言要带冒号：新增的 password_hint / access_token_hint /
+	// refresh_token_hint 是掩码，本身允许出现，但不能出现明文键。
+	for _, field := range []string{`"password":`, `"access_token":`, `"refresh_token":`} {
 		assert.NotContains(t, text, field, "响应不得包含凭据字段")
 	}
 	assert.Contains(t, text, `"has_password":true`)
 	assert.Contains(t, text, `"has_token":true`)
+	// 掩码必须存在且不等于原值，前 3 后 3 保留。
+	assert.Contains(t, text, `"password_hint":"pw-....lue"`)
+	assert.NotContains(t, text, "pw-secret-value")
 
 	// 模型本身也可能被别的 handler 直接序列化；json:"-" 必须同样兜住。
 	rawAccount, err := common.Marshal(account)

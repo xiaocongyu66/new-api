@@ -304,9 +304,7 @@ export function UpstreamAccountDialog({
                       <Input
                         type='password'
                         autoComplete='new-password'
-                        placeholder={
-                          account?.has_password ? t('Configured') : undefined
-                        }
+                        placeholder={account?.password_hint || undefined}
                         {...field}
                       />
                     </FormControl>
@@ -351,9 +349,7 @@ export function UpstreamAccountDialog({
                       <Input
                         type='password'
                         autoComplete='off'
-                        placeholder={
-                          account?.has_token ? t('Configured') : undefined
-                        }
+                        placeholder={account?.access_token_hint || undefined}
                         {...field}
                       />
                     </FormControl>
@@ -379,9 +375,7 @@ export function UpstreamAccountDialog({
                       <Input
                         type='password'
                         autoComplete='off'
-                        placeholder={
-                          account?.has_token ? t('Configured') : undefined
-                        }
+                        placeholder={account?.refresh_token_hint || undefined}
                         {...field}
                       />
                     </FormControl>

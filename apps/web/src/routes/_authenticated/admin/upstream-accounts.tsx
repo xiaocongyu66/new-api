@@ -18,17 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { hasPermission } from '@/lib/admin-permissions'
-import { useAuthStore } from '@/stores/auth-store'
-
 export const Route = createFileRoute('/_authenticated/admin/upstream-accounts')({
+  // Accounts are a tab on the upstream page now; keep old links working.
+  // The target route enforces the system.settings capability.
   beforeLoad: () => {
-    const { auth } = useAuthStore.getState()
-
-    // Matches the nav item's requiredCapability and the backend policy: admin
-    // role alone is not enough, the page needs system.settings.
-    if (!hasPermission(auth.user, 'system', 'settings')) {
-      throw redirect({ to: '/403' })
-    }
+    throw redirect({ to: '/admin/upstream-prices' })
   },
 })

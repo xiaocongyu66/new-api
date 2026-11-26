@@ -54,42 +54,67 @@ func init() {
 }
 
 // UpstreamAccountResponse 是唯一允许穿过 HTTP 边界的账号形状。
-// 密码与 token 只以布尔状态出现，前端编辑时留空即保持原值。
+// 密码与 token 本身永不出现，只给布尔状态 + 一段掩码。
+//
+// 掩码的意义是让编辑页的输入框不至于看起来「什么都没存」：直接回显原值会
+// 把明文交给浏览器，而只给 true/false 又让人分不清「已配置」和「空着」。
+// 掩码固定为「前 3 + .... + 后 3」，短于 10 位的一律全遮挡，避免 8 位密码
+// 被遮掉 6 位后只剩两位未知。
 type UpstreamAccountResponse struct {
-	Id              int    `json:"id"`
-	Host            string `json:"host"`
-	BaseURL         string `json:"base_url"`
-	Kind            string `json:"kind"`
-	Username        string `json:"username"`
-	JKGroupID       string `json:"jk_group_id"`
-	HasPassword     bool   `json:"has_password"`
-	HasToken        bool   `json:"has_token"`
-	TokenExpiresAt  int64  `json:"token_expires_at"`
-	Enabled         bool   `json:"enabled"`
-	LastTestAt      int64  `json:"last_test_at"`
-	LastTestOK      bool   `json:"last_test_ok"`
-	LastTestMessage string `json:"last_test_message"`
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
+	Id               int    `json:"id"`
+	Host             string `json:"host"`
+	BaseURL          string `json:"base_url"`
+	Kind             string `json:"kind"`
+	Username         string `json:"username"`
+	JKGroupID        string `json:"jk_group_id"`
+	HasPassword      bool   `json:"has_password"`
+	HasToken         bool   `json:"has_token"`
+	PasswordHint     string `json:"password_hint"`
+	AccessTokenHint  string `json:"access_token_hint"`
+	RefreshTokenHint string `json:"refresh_token_hint"`
+	TokenExpiresAt   int64  `json:"token_expires_at"`
+	Enabled          bool   `json:"enabled"`
+	LastTestAt       int64  `json:"last_test_at"`
+	LastTestOK       bool   `json:"last_test_ok"`
+	LastTestMessage  string `json:"last_test_message"`
+	CreatedAt        int64  `json:"created_at"`
+	UpdatedAt        int64  `json:"updated_at"`
+}
+
+// maskSecret 把密钥折成「前 3 + .... + 后 3」。
+// 太短的值（<10）整段遮蔽：否则 8 位密码只剩 2 位未知，等于泄露。
+func maskSecret(secret string) string {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return ""
+	}
+	runes := []rune(secret)
+	if len(runes) < 10 {
+		return "••••••••"
+	}
+	return string(runes[:3]) + "...." + string(runes[len(runes)-3:])
 }
 
 func (account *UpstreamAccount) ToResponse() UpstreamAccountResponse {
 	return UpstreamAccountResponse{
-		Id:              account.Id,
-		Host:            account.Host,
-		BaseURL:         account.BaseURL,
-		Kind:            account.Kind,
-		Username:        account.Username,
-		JKGroupID:       account.JKGroupID,
-		HasPassword:     strings.TrimSpace(account.Password) != "",
-		HasToken:        strings.TrimSpace(account.AccessToken) != "" || strings.TrimSpace(account.RefreshToken) != "",
-		TokenExpiresAt:  account.TokenExpiresAt,
-		Enabled:         account.Enabled,
-		LastTestAt:      account.LastTestAt,
-		LastTestOK:      account.LastTestOK,
-		LastTestMessage: account.LastTestMessage,
-		CreatedAt:       account.CreatedAt,
-		UpdatedAt:       account.UpdatedAt,
+		Id:               account.Id,
+		Host:             account.Host,
+		BaseURL:          account.BaseURL,
+		Kind:             account.Kind,
+		Username:         account.Username,
+		JKGroupID:        account.JKGroupID,
+		HasPassword:      strings.TrimSpace(account.Password) != "",
+		HasToken:         strings.TrimSpace(account.AccessToken) != "" || strings.TrimSpace(account.RefreshToken) != "",
+		PasswordHint:     maskSecret(account.Password),
+		AccessTokenHint:  maskSecret(account.AccessToken),
+		RefreshTokenHint: maskSecret(account.RefreshToken),
+		TokenExpiresAt:   account.TokenExpiresAt,
+		Enabled:          account.Enabled,
+		LastTestAt:       account.LastTestAt,
+		LastTestOK:       account.LastTestOK,
+		LastTestMessage:  account.LastTestMessage,
+		CreatedAt:        account.CreatedAt,
+		UpdatedAt:        account.UpdatedAt,
 	}
 }
 
